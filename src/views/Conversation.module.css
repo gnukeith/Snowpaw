@@ -58,6 +58,12 @@
   min-width: max-content;
 }
 
+/* The messages and the ripples over them share the middle row. */
+.messages,
+.ripples {
+  grid-area: 2 / 1;
+}
+
 .messages {
   display: flex;
   flex-direction: column;

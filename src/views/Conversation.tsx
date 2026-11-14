@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Avatar } from "../components/Avatar";
 import { IconButton } from "../components/IconButton";
+import { Ripples } from "../components/Ripples";
 import { Markdown } from "../components/Markdown";
 import { useFollow } from "../components/useFollow";
 import { initials, maxPinned, type Agent } from "../data/agents";
@@ -128,6 +129,7 @@ export function Conversation(props: Props) {
         role="group"
         aria-label="Messages"
         onScroll={view.onScroll}
+        data-ripples
       >
         {messages.length === 0 && (
           <p className={styles.empty}>Nothing here yet. Say what you want {agent.name} to do.</p>
@@ -228,6 +230,7 @@ export function Conversation(props: Props) {
           <IconButton primary type="submit" icon="send" label="Send" disabled={!draft.trim()} />
         )}
       </form>
+      <Ripples className={styles.ripples} />
     </div>
   );
 }
