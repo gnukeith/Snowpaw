@@ -14,13 +14,18 @@ import {
   saveAgents,
   type Agent,
 } from "./data/agents";
+import { ask, connectionFor, describeReplyFailure, turnsOf, whyNoConnection, type Reply } from "./data/chat";
 import {
   acceptProposal,
+  endReply,
+  pendingReply,
   userMessage,
   workOf,
+  writeReply,
   type AllWork,
   type Message,
   type TaskDraft,
+  type Work,
 } from "./data/conversation";
 import { loadConnections, saveConnections } from "./data/connections";
 import { parseButtonLayout, type ButtonLayout } from "./data/frame";
@@ -54,9 +59,10 @@ export function App() {
   // well does not hide another that did not.
   const [unsaved, setUnsaved] = useState<Record<string, boolean>>({});
   const [selectedId, setSelectedId] = useState<string>();
-  // Kept in memory only: nothing answers yet, and where an agent's work is
-  // stored is a decision for when something does.
+  // Kept in memory only: where an agent's work is stored is not decided yet.
   const [work, setWork] = useState<AllWork>({});
+  // The reply each agent's model is writing, by agent: one at a time each.
+  const replies = useRef(new Map<string, Reply>());
   // The agent being edited, "new" for one being made, or null.
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -161,7 +167,42 @@ export function App() {
     setProposing(undefined);
   }
 
+  /** Changes one agent's work, if the agent still has any: what arrives for
+      an agent that has been deleted is dropped. */
+  function change(agentId: string, to: (work: Work) => Work) {
+    setWork((all) => (Object.hasOwn(all, agentId) ? { ...all, [agentId]: to(all[agentId]) } : all));
+  }
+
+  /** Adds what the user wrote to an agent's conversation and asks the
+      agent's model to answer it. */
+  function send(agent: Agent, text: string) {
+    if (replies.current.has(agent.id)) return;
+    const said = userMessage(text);
+    const reply = pendingReply(agent.id);
+    const messages = [...workOf(work, agent.id).messages, said];
+    setWork((all) => {
+      const mine = workOf(all, agent.id);
+      return { ...all, [agent.id]: { ...mine, messages: [...mine.messages, said, reply] } };
+    });
+    const connection = connectionFor(agent, connections);
+    if (!connection) {
+      change(agent.id, (mine) => endReply(mine, reply.id, whyNoConnection(agent, connections)));
+      return;
+    }
+    const writing = ask(connection, turnsOf(messages, agent.id), (answer, thinking) =>
+      change(agent.id, (mine) => writeReply(mine, reply.id, answer, thinking)),
+    );
+    replies.current.set(agent.id, writing);
+    writing.done
+      .then(() => undefined, describeReplyFailure)
+      .then((failure) => {
+        replies.current.delete(agent.id);
+        change(agent.id, (mine) => endReply(mine, reply.id, failure));
+      });
+  }
+
   function remove(agent: Agent) {
+    replies.current.get(agent.id)?.stop();
     setAgents(agents.filter((other) => other.id !== agent.id));
     setWork(({ [agent.id]: _gone, ...rest }) => rest);
     setEditing(null);
@@ -204,12 +245,8 @@ export function App() {
               panelOpen={panelOpen}
               windowButtons={!panelOpen && farButtons}
               onTogglePanel={() => setPanelOpen(!panelOpen)}
-              onSend={(text) =>
-                setWork((all) => {
-                  const mine = workOf(all, selected.id);
-                  return { ...all, [selected.id]: { ...mine, messages: [...mine.messages, userMessage(text)] } };
-                })
-              }
+              onSend={(text) => send(selected, text)}
+              onStop={() => replies.current.get(selected.id)?.stop()}
               onSchedule={(message) =>
                 message.proposal && schedule(selected.id, message, message.proposal.task)
               }
@@ -254,6 +291,7 @@ export function App() {
         {editing && (
           <AgentEditor
             agent={editing === "new" ? undefined : editing}
+            connections={connections}
             onSave={save}
             onDelete={remove}
             onClose={() => setEditing(null)}

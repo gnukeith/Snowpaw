@@ -6,6 +6,9 @@ export interface Agent {
   /** A small square image as a data URL, made by `toPicture`. */
   picture?: string;
   pinned: boolean;
+  /** The id of the connection whose model answers for it, once one is
+      chosen. `connectionFor` in chat.ts says what answers until then. */
+  connection?: string;
 }
 
 export const maxPinned = 3;
@@ -55,7 +58,7 @@ export function parseAgents(saved: unknown): Agent[] {
   let pins = 0;
   for (const entry of saved) {
     if (typeof entry !== "object" || entry === null) continue;
-    const { id, hue, picture, pinned } = entry;
+    const { id, hue, picture, pinned, connection } = entry;
     const name = cleanName(entry.name);
     if (typeof id !== "string" || !id || ids.has(id) || !name) continue;
     ids.add(id);
@@ -67,6 +70,7 @@ export function parseAgents(saved: unknown): Agent[] {
       hue: Number.isFinite(hue) ? hue : 0,
       picture: typeof picture === "string" && picture.startsWith("data:image/") ? picture : undefined,
       pinned: pin,
+      ...(typeof connection === "string" && connection ? { connection } : {}),
     });
   }
   return agents;
