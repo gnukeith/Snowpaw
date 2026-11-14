@@ -40,7 +40,27 @@ fn remove_title_bar(window: &WebviewWindow) -> Result<(), String> {
     let nothing = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     nothing.set_no_show_all(true);
     window.set_titlebar(Some(&nothing));
+    square_the_frame(&window);
     Ok(())
+}
+
+/// Themes round the top corners of the frame to fit the title bar that used to
+/// sit there. The page under it is a plain rectangle, so the frame's outline
+/// curved away behind the page's top corners and showed as a line with notched
+/// ends, on top only. The frame is made a rectangle too: all four corners then
+/// look alike. If this fails the window still works, with the notches.
+fn square_the_frame(window: &gtk::ApplicationWindow) {
+    let style = gtk::CssProvider::new();
+    let loaded = style.load_from_data(b"decoration { border-radius: 0; }");
+    match (loaded, gtk::prelude::GtkWindowExt::screen(window)) {
+        (Ok(()), Some(screen)) => gtk::StyleContext::add_provider_for_screen(
+            &screen,
+            &style,
+            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+        ),
+        (Err(error), _) => eprintln!("frame: the frame keeps its round corners: {error}"),
+        (_, None) => eprintln!("frame: the frame keeps its round corners: no screen"),
+    }
 }
 
 // Like every command the webview gets, these take no argument. Each acts on
