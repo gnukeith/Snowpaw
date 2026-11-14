@@ -18,8 +18,9 @@
 //! connection or the app's process ends. Linux ends every process in the
 //! sandbox when that first process exits, and does not let the others kill
 //! or stop it. Nothing has to be arranged in advance that the app's death
-//! could come before. The machine is gone shortly after the app, not at the
-//! same instant: Linux has to notice and finish the processes off.
+//! could come before. The machine is not gone at the same instant as the
+//! app: Linux has to notice and finish the processes off, which normally
+//! takes milliseconds and has no fixed limit.
 //!
 //! How the app knows a machine is gone. It holds a handle on the keeper
 //! (a pidfd, taken from the connection itself). Linux reports the first
@@ -83,9 +84,9 @@ pub struct Vm {
     screen: Mutex<Screen>,
 }
 
-/// A machine whose sandbox has been started but which has not connected to
-/// the app yet. No guest runs until `connect` tells the keeper to go, so
-/// dropping it before then leaves no guest.
+/// A machine from the start of its sandbox until `connect` has made it a
+/// `Vm` or has seen it fail. No guest runs until `connect` tells the keeper
+/// to go, so dropping it before then leaves no guest.
 pub struct Spawned {
     // Fields are dropped in this order, and it matters: the socket has to
     // close before the sandbox is waited for (see `Process::kill`).
@@ -148,8 +149,8 @@ impl Process {
                 true
             }
         };
-        // bubblewrap is only waited for by now. Killed first, so that the
-        // wait does not depend on what is left in the sandbox.
+        // bubblewrap is only collected by now: killed, then waited for,
+        // with no limit on that wait.
         let _ = child.kill();
         let _ = child.wait();
         gone

@@ -47,9 +47,9 @@ struct Wait {
     revents: i16,
 }
 
-/// Waits until the app sends something or is gone. True only if, at that
-/// moment, the app's process was still there and its connection had
-/// something to read and nothing wrong with it.
+/// Waits until something happens on the app's connection or to the app's
+/// process. True only if what happened is data arriving on the connection
+/// and nothing else. That is what was seen then: the app can end right after.
 fn app_spoke(app: &UnixStream, app_process: i32) -> bool {
     let mut waits = [
         Wait { fd: app.as_raw_fd(), events: POLLIN, revents: 0 },

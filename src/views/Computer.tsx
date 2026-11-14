@@ -28,12 +28,22 @@ export function Computer() {
   const action = useRef<HTMLButtonElement>(null);
   // Set when Start or Stop was pressed, so focus can follow to the button that replaces it.
   const refocus = useRef(false);
+  // Goes up with every look at the machine and every start or stop. An
+  // answer is used only if nothing has happened since it was asked for, so
+  // one that arrives late can never replace something newer.
+  const latest = useRef(0);
+
+  async function look() {
+    const mine = ++latest.current;
+    const now = await ask();
+    if (mine === latest.current) setPower(now);
+  }
 
   useEffect(() => {
-    let live = true;
-    ask().then((now) => live && setPower(now));
+    look();
     return () => {
-      live = false;
+      // Whatever is still on its way is for a view that is gone.
+      latest.current++;
     };
   }, []);
 
@@ -42,12 +52,8 @@ export function Computer() {
   // looked at again until it has settled.
   useEffect(() => {
     if (power !== "starting" || busy) return;
-    let live = true;
-    const timer = setInterval(() => ask().then((now) => live && setPower(now)), statusInterval);
-    return () => {
-      live = false;
-      clearInterval(timer);
-    };
+    const timer = setInterval(look, statusInterval);
+    return () => clearInterval(timer);
   }, [power, busy]);
 
   // While the machine is on, ask for one frame at a time and paint it. The
@@ -65,10 +71,9 @@ export function Computer() {
           } catch (reason) {
             // The Rust side ends a machine whose screen it cannot read. Ask
             // whether it managed to, and do not claim more than the answer.
-            const now = await ask();
             if (live) {
               setError(String(reason));
-              setPower(now);
+              await look();
             }
             return;
           }
@@ -105,18 +110,29 @@ export function Computer() {
   async function turn(on: boolean) {
     setBusy(true);
     setError(null);
+    // Answers asked for before this start or stop began, or before it ended,
+    // are out of date.
+    latest.current++;
     if (on) setPower("starting");
     try {
       await invoke(on ? "vm_start" : "vm_stop");
+      latest.current++;
       refocus.current = true;
       setPower(on ? "on" : "off");
     } catch (reason) {
       setError(String(reason));
       // A start or stop that failed can still leave a machine there. Ask.
-      setPower(await ask());
+      await look();
     } finally {
       setBusy(false);
     }
+  }
+
+  // One check at a time: the buttons are off until the answer is in.
+  async function check() {
+    setBusy(true);
+    await look();
+    setBusy(false);
   }
 
   const message =
@@ -179,7 +195,7 @@ export function Computer() {
         <p className={styles.hint}>It may be running.</p>
         {problem}
         <div className={styles.actions}>
-          <Button disabled={busy} onClick={() => ask().then(setPower)}>
+          <Button disabled={busy} onClick={check}>
             Check again
           </Button>
           {stop}
