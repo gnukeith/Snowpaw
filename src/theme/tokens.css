@@ -17,16 +17,20 @@
 
   /* Edges. One gap separates the window from its panels and a panel from
      the controls inside it. Corners stay concentric: a corner nested inside
-     another is the outer radius minus the gap between them. */
+     another is the outer radius minus everything between the two edges.
+     A control sits inside a panel's border and its edge gap; a nested part
+     sits inside a control's two-hairline padding. */
   --edge: var(--space-2);
   --hairline: 1px;
   --radius-panel: calc(var(--unit) * 3.5);
-  --radius-control: calc(var(--radius-panel) - var(--edge));
+  --radius-control: calc(var(--radius-panel) - var(--hairline) - var(--edge));
   --radius-nested: calc(var(--radius-control) - var(--hairline) * 2);
+  --radius-round: 50%;
 
   /* Fixed sizes. */
   --control-height: var(--space-8);
   --icon-size: var(--space-4);
+  --icon-stroke: 1.5;
   --sidebar-width: calc(var(--unit) * 60);
   --settings-nav-width: calc(var(--unit) * 50);
   --content-width: calc(var(--unit) * 160);
@@ -50,6 +54,12 @@
   --accent: light-dark(oklch(56% 0.17 var(--hue)), oklch(74% 0.13 var(--hue)));
   --hover: color-mix(in oklch, var(--text) 6%, transparent);
   --selected: color-mix(in oklch, var(--accent) 14%, transparent);
+  /* Every hue the accent can take, at one lightness, for the hue picker. */
+  --hue-track: linear-gradient(
+    to right in oklch longer hue,
+    oklch(68% 0.15 0),
+    oklch(68% 0.15 360)
+  );
   --shadow-raised: 0 var(--hairline) calc(var(--unit) / 2) color-mix(in oklch, black 14%, transparent);
 }
 
