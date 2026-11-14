@@ -106,6 +106,19 @@
   font-size: var(--text-sm);
 }
 
+/* Why a reply ended early, under what there is of it. */
+.failure {
+  padding-inline-start: calc(var(--avatar-md) + var(--space-2));
+  color: var(--danger);
+  font-size: var(--text-sm);
+  user-select: text;
+}
+
+/* Stands in for a reply until its first word. */
+.waiting {
+  color: var(--text-muted);
+}
+
 /* A message and the face of whoever wrote it: theirs on the left, yours on
    the right. The face's place is kept even where no face is shown, so every
    message in a run starts at the same edge. */

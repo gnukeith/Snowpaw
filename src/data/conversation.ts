@@ -9,6 +9,10 @@ export interface Message {
   at: number;
   /** A task the agent wants to schedule without having been asked to. */
   proposal?: Proposal;
+  /** Set while a model is still writing it. */
+  pending?: boolean;
+  /** Why it ended before it was finished, in words for the person reading. */
+  failure?: string;
 }
 
 /** One thing an agent did on the way to an answer, shown so it can be checked. */
@@ -70,6 +74,49 @@ export function workOf(all: AllWork, id: string): Work {
 
 export function userMessage(text: string): Message {
   return { id: crypto.randomUUID(), from: "user", text, at: Date.now() };
+}
+
+/** A reply about to be written by an agent's model: empty, and pending. */
+export function pendingReply(agentId: string): Message {
+  return { id: crypto.randomUUID(), from: agentId, text: "", at: Date.now(), pending: true };
+}
+
+/**
+ * A reply as far as its model has written it: the answer in the message, and
+ * the reasoning that led to it as a step under the same id, so the one can be
+ * checked against the other. A reply that is no longer pending, or no longer
+ * there, is left alone: what arrives late for it is dropped.
+ */
+export function writeReply(work: Work, id: string, text: string, thinking: string): Work {
+  const message = work.messages.find((other) => other.id === id);
+  if (!message?.pending) return work;
+  const step: Step = { id, kind: "thinking", text: thinking, at: message.at };
+  const known = work.steps.some((other) => other.id === id);
+  return {
+    ...work,
+    messages: work.messages.map((other) => (other === message ? { ...message, text } : other)),
+    steps: !thinking
+      ? work.steps
+      : known
+        ? work.steps.map((other) => (other.id === id ? step : other))
+        : [...work.steps, step],
+  };
+}
+
+/** Ends a reply, with the reason if it did not finish. One that ends with
+    nothing written and nothing to say about why is taken away again. */
+export function endReply(work: Work, id: string, failure?: string): Work {
+  const message = work.messages.find((other) => other.id === id);
+  if (!message?.pending) return work;
+  const { pending: _over, ...ended } = message;
+  if (failure) ended.failure = failure;
+  return {
+    ...work,
+    messages:
+      ended.text || failure
+        ? work.messages.map((other) => (other === message ? ended : other))
+        : work.messages.filter((other) => other !== message),
+  };
 }
 
 /** Whether a number is a moment a date can hold. A task's time arrives from an

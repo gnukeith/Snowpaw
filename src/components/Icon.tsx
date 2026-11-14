@@ -21,6 +21,7 @@ const icons = {
     </>
   ),
   send: <path d="M8 13V3M4 7l4-4 4 4" />,
+  stop: <rect x="5" y="5" width="6" height="6" rx="1" />,
   pin: <path d="M6 2.5h4l-.5 4 2 2.5h-7l2-2.5zM8 9v4.5" />,
   edit: <path d="m3 13 .5-3L11 2.5 13.5 5 6 12.5z" />,
   expand: <path d="M9.5 2.5h4v4m-7 7h-4v-4m11-7L9 7m-6.5 6.5L7 9" />,

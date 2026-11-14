@@ -81,7 +81,7 @@ export function AgentPanel({ ref, id, agent, work, windowButtons, onClose }: Pro
         </div>
         <div className={styles.body}>
           {tab === "computer" && <Computer />}
-          {tab === "activity" && <Activity agent={agent} steps={work.steps} />}
+          {tab === "activity" && <Activity key={agent.id} agent={agent} steps={work.steps} />}
           {tab === "changes" && <Changes agent={agent} diff={work.diff} />}
           {tab === "scheduled" && <Scheduled agent={agent} tasks={work.tasks} />}
         </div>

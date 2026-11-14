@@ -65,3 +65,10 @@ test("initials take the first letter of up to two words", () => {
   assert.equal(initials("a b c"), "AB");
   assert.equal(initials("  "), "");
 });
+
+test("the connection chosen for an agent is kept, and anything else in its place is dropped", () => {
+  assert.equal(parseAgents([agent("a", { connection: "c1" })])[0].connection, "c1");
+  for (const connection of ["", 5, null, {}]) {
+    assert.equal(Object.hasOwn(parseAgents([agent("a", { connection })])[0], "connection"), false);
+  }
+});

@@ -9,6 +9,7 @@ import {
 import { Avatar } from "../components/Avatar";
 import { IconButton } from "../components/IconButton";
 import { Markdown } from "../components/Markdown";
+import { useFollow } from "../components/useFollow";
 import { initials, maxPinned, type Agent } from "../data/agents";
 import { Button } from "../components/Button";
 import { isMoment, taskLine, type Message } from "../data/conversation";
@@ -29,6 +30,8 @@ interface Props {
   /** The window's buttons, when this view is the one in the window's corner. */
   windowButtons: ReactNode;
   onSend: (text: string) => void;
+  /** Ends the reply that is being written, where it stands. */
+  onStop: () => void;
   /** Agrees to the task a message proposed, as proposed. */
   onSchedule: (message: Message) => void;
   /** Opens that task to be changed first. */
@@ -49,7 +52,10 @@ const clock = new Intl.DateTimeFormat(undefined, {
 export function Conversation(props: Props) {
   const { agent, agents, user, messages, canPin, onSend, onTogglePin, onEdit } = props;
   const [draft, setDraft] = useState("");
-  const end = useRef<HTMLDivElement>(null);
+  // The view stays at the newest message while a reply is written.
+  const view = useFollow<HTMLDivElement>(messages);
+  // One reply at a time: the next message waits for this one to end.
+  const replying = messages.some((message) => message.pending);
   const opener = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(props.panelOpen);
 
@@ -68,7 +74,8 @@ export function Conversation(props: Props) {
   function send(event?: FormEvent) {
     event?.preventDefault();
     const text = draft.trim();
-    if (!text) return;
+    if (!text || replying) return;
+    view.follow();
     onSend(text);
     setDraft("");
   }
@@ -114,7 +121,14 @@ export function Conversation(props: Props) {
       </header>
 
       {/* It can take focus so that the keyboard can scroll it: no scrollbar is drawn. */}
-      <div className={styles.messages} tabIndex={0} role="group" aria-label="Messages">
+      <div
+        ref={view.ref}
+        className={styles.messages}
+        tabIndex={0}
+        role="group"
+        aria-label="Messages"
+        onScroll={view.onScroll}
+      >
         {messages.length === 0 && (
           <p className={styles.empty}>Nothing here yet. Say what you want {agent.name} to do.</p>
         )}
@@ -144,22 +158,34 @@ export function Conversation(props: Props) {
                   {name(message.from)} to {message.to ? name(message.to) : "you"}
                 </span>
               )}
-              <div className={mine ? styles.mineRow : styles.row}>
-                <span className={styles.face}>
-                  {lastOfRun &&
-                    (mine ? (
-                      <Avatar who={user} initials={initials(user.name)} size="md" />
+              {/* A reply that failed before a word of it came has only its reason to show. */}
+              {(message.text || message.pending) && (
+                <div className={mine ? styles.mineRow : styles.row}>
+                  <span className={styles.face}>
+                    {lastOfRun &&
+                      (mine ? (
+                        <Avatar who={user} initials={initials(user.name)} size="md" />
+                      ) : (
+                        <Avatar who={agents.find((other) => other.id === message.from) ?? {}} size="md" />
+                      ))}
+                  </span>
+                  <div className={mine ? styles.mine : between ? styles.between : styles.theirs}>
+                    {/* Who wrote it, for those who cannot see which side it is
+                        on. Between agents, the line above already says. */}
+                    {!between && <span className={styles.unseen}>{mine ? "You" : agent.name}: </span>}
+                    {message.text ? (
+                      <Markdown text={message.text} />
                     ) : (
-                      <Avatar who={agents.find((other) => other.id === message.from) ?? {}} size="md" />
-                    ))}
-                </span>
-                <div className={mine ? styles.mine : between ? styles.between : styles.theirs}>
-                  {/* Who wrote it, for those who cannot see which side it is
-                      on. Between agents, the line above already says. */}
-                  {!between && <span className={styles.unseen}>{mine ? "You" : agent.name}: </span>}
-                  <Markdown text={message.text} />
+                      <span className={styles.waiting}>Thinking…</span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+              {message.failure && (
+                <p className={styles.failure} role="status">
+                  {message.failure}
+                </p>
+              )}
               {message.proposal && (
                 <div className={styles.proposal}>
                   <p className={styles.status}>
@@ -184,7 +210,6 @@ export function Conversation(props: Props) {
             </div>
           );
         })}
-        <div ref={end} />
       </div>
 
       <form className={styles.composer} onSubmit={send}>
@@ -197,7 +222,11 @@ export function Conversation(props: Props) {
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
         />
-        <IconButton primary type="submit" icon="send" label="Send" disabled={!draft.trim()} />
+        {replying ? (
+          <IconButton primary icon="stop" label="Stop" onClick={props.onStop} />
+        ) : (
+          <IconButton primary type="submit" icon="send" label="Send" disabled={!draft.trim()} />
+        )}
       </form>
     </div>
   );
