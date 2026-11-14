@@ -17,13 +17,19 @@ export function Dialog({ title, onClose, wide, children }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useId();
 
+  // What had focus when the dialog opened. Kept in a ref because development
+  // builds run the effect below twice, and the second run would find focus
+  // already inside the dialog.
+  const opener = useRef<Element | null>(null);
+
   useEffect(() => {
-    // Closing the dialog hands focus back by itself. Taking the dialog off the
-    // page does not, so remember what had focus and return it by hand.
-    const opener = document.activeElement;
+    opener.current ??= document.activeElement;
     if (!dialog.current?.open) dialog.current?.showModal();
+    // Closing the dialog hands focus back by itself. Taking the dialog off the
+    // page does not, so return it by hand. If what opened the dialog has gone
+    // too, there is nothing to return it to.
     return () => {
-      if (opener instanceof HTMLElement) opener.focus();
+      if (opener.current instanceof HTMLElement) opener.current.focus();
     };
   }, []);
 
