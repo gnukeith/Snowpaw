@@ -9,6 +9,16 @@
   min-width: 0;
   padding: var(--edge) 0;
   overflow: hidden;
+  container-type: inline-size;
+}
+
+/* In a narrow window the agent's panel takes all the room and the
+   conversation is left with no width. It is hidden then, so that the keyboard
+   cannot reach what cannot be seen. */
+@container (width = 0) {
+  .main > .panel {
+    visibility: hidden;
+  }
 }
 
 .main .panel {

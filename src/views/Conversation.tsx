@@ -33,6 +33,15 @@ export function Conversation(props: Props) {
   const { agent, agents, messages, canPin, onSend, onTogglePin, onEdit } = props;
   const [draft, setDraft] = useState("");
   const end = useRef<HTMLDivElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(props.panelOpen);
+
+  // Focus went into the panel when it opened. When it closes, focus comes
+  // back to the button that opens it.
+  useEffect(() => {
+    if (wasOpen.current && !props.panelOpen) opener.current?.focus();
+    wasOpen.current = props.panelOpen;
+  }, [props.panelOpen]);
 
   // Keep the newest message in view, and start at the bottom of a conversation.
   useEffect(() => {
@@ -60,6 +69,7 @@ export function Conversation(props: Props) {
       <header className={styles.header}>
         <h1 className={styles.heading}>
           <button
+            ref={opener}
             className={styles.who}
             aria-expanded={props.panelOpen}
             title={props.panelOpen ? "Hide what this agent is doing" : "Show what this agent is doing"}

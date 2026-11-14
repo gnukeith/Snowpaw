@@ -24,6 +24,12 @@ export function AgentPanel({ agent, work, onClose }: Props) {
   const [tab, setTab] = useState<(typeof tabs)[number]>("computer");
   const [full, setFull] = useState(false);
 
+  // Opening the panel moves focus into it. In a narrow window the panel takes
+  // the conversation's place, and what had focus is no longer on screen.
+  useEffect(() => {
+    panel.current?.querySelector<HTMLElement>("input:checked")?.focus();
+  }, []);
+
   // Escape and the desktop can leave full screen too, so follow what happened
   // instead of what was asked for.
   useEffect(() => {
