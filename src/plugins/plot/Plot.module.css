@@ -22,6 +22,9 @@
   width: 100%;
   height: auto;
   overflow: hidden;
+  /* Read back by Plot.tsx, resolved, to lay the drawing out. */
+  font-size: var(--text-sm);
+  row-gap: var(--unit);
 }
 
 .frame { fill: var(--surface); }

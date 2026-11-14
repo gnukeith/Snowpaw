@@ -18,11 +18,20 @@ interface Sizes {
   medium: number;
 }
 
-/** Reads the theme's spacing unit and text sizes where the plot is drawn. */
-function sizesAt(element: Element): Sizes {
-  const style = getComputedStyle(element);
-  const read = (token: string, fallback: number) => parseFloat(style.getPropertyValue(token)) || fallback;
-  return { unit: read("--unit", 4), small: read("--text-sm", 12), medium: read("--text-md", 14) };
+/** The theme's spacing unit and text sizes, as the browser has worked them
+    out where the plot is drawn. A custom property is read back as written,
+    "calc(...)" and all, so they are read from ordinary properties the
+    stylesheet sets to them: the drawing's font size is the small text, the
+    figure's the medium, and the drawing's row gap, which has no other use on
+    it, is the unit. */
+function sizesAt(svg: SVGSVGElement): Sizes {
+  const drawing = getComputedStyle(svg);
+  const figure = getComputedStyle(svg.parentElement ?? svg);
+  return {
+    unit: parseFloat(drawing.rowGap) || 4,
+    small: parseFloat(drawing.fontSize) || 12,
+    medium: parseFloat(figure.fontSize) || 14,
+  };
 }
 
 /**
@@ -30,7 +39,8 @@ function sizesAt(element: Element): Sizes {
  * the size the theme gives it instead of being scaled with the picture. The
  * room round the plotted area is made from the theme's spacing unit and text
  * sizes, and the left side also grows with the longest number on the
- * vertical axis. Both are read again whenever the plot changes size.
+ * vertical axis. Both are read again whenever the plot or its drawing
+ * changes size.
  */
 export default function Plot({ source }: BlockProps) {
   const clipId = `plot-${useId()}`;
@@ -52,6 +62,9 @@ export default function Plot({ source }: BlockProps) {
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(svg);
+    // Its heading and legend grow with the theme's text, so a change of
+    // text size is noticed even when the drawing keeps its width.
+    if (svg.parentElement) observer.observe(svg.parentElement);
     return () => observer.disconnect();
   }, []);
 
