@@ -19,10 +19,15 @@ export const longestFormula = 4000;
 /* A formula that defines commands of its own can make a few characters
    build without end: \def\a{x+x+...}\a\a\a... KaTeX caps how many times a
    command expands, not how much each expansion builds, so such a formula is
-   not drawn. Without them, what a formula builds stays in proportion to its
-   length. */
+   not drawn. One built-in command defines another as well: \tag keeps its
+   text in \df@tag, which can then be called over and over. Commands with
+   "@" in their names are KaTeX's own and not for writing, and KaTeX has no
+   way to make a command's name from other characters, so refusing those
+   closes that way too. What is left expands only into KaTeX's own fixed
+   commands, a capped number of times, so what a formula builds stays in
+   proportion to its length. */
 export const definesCommands =
-  /\\(?:def|gdef|edef|xdef|let|futurelet|global|newcommand|renewcommand|providecommand|DeclareMathOperator|DeclarePairedDelimiter)(?![a-zA-Z@])/;
+  /\\(?:def|gdef|edef|xdef|let|futurelet|global|newcommand|renewcommand|providecommand|DeclareMathOperator|DeclarePairedDelimiter)(?![a-zA-Z@])|\\[a-zA-Z]*@/;
 
 /** The MathML attributes that hold a length or a list of them. */
 const sized = new Set([

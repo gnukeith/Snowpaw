@@ -14,7 +14,11 @@ export class Budget {
   // grows, so a block that is refused still costs what it took to build.
   private work = 0;
 
-  constructor(readonly limit: number) {}
+  readonly limit: number;
+
+  constructor(limit: number) {
+    this.limit = limit;
+  }
 
   /** Whether there is work left to build another block with. */
   mayWork(): boolean {

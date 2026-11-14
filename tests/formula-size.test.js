@@ -79,10 +79,12 @@ test("each unit is read, and what cannot be read counts as too large", () => {
 });
 
 test("a formula that defines commands of its own is recognised", () => {
-  for (const formula of ["\\def\\a{x}\\a", "\\newcommand{\\R}{\\mathbb{R}}", "\\gdef\\b{y}", "\\let\\c=x", "x \\global\\def\\d{z}"]) {
+  // \tag keeps its text in \df@tag, which could then be called over and over.
+  const retagged = String.raw`\tag{$` + "x+".repeat(1000) + "x$}" + String.raw`\df@tag`.repeat(284);
+  for (const formula of ["\\def\\a{x}\\a", "\\newcommand{\\R}{\\mathbb{R}}", "\\gdef\\b{y}", "\\let\\c=x", "x \\global\\def\\d{z}", retagged, "\\bra@ket{x}", "\\current@color"]) {
     assert.ok(definesCommands.test(formula), formula);
   }
-  for (const formula of ["\\left( x \\right)", "\\deg x", "\\delta", "\\letter", "\\defined", "a \\leq b"]) {
+  for (const formula of ["\\left( x \\right)", "\\deg x", "\\delta", "\\letter", "\\defined", "a \\leq b", "x \\tag{1}", "\\braket{x|y}", "a @ b", "\\text{me@example.com}"]) {
     assert.ok(!definesCommands.test(formula), formula);
   }
 });
