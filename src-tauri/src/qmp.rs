@@ -28,7 +28,6 @@ impl Qmp {
     /// deadline for the whole exchange, so a peer that keeps sending a little
     /// data cannot stretch it.
     pub fn connect(stream: UnixStream, timeout: Duration) -> io::Result<Self> {
-        stream.set_write_timeout(Some(timeout))?;
         let mut qmp = Self { stream: BufReader::new(stream), timeout, last_id: 0 };
         let deadline = Instant::now() + timeout;
         if qmp.read_message(deadline)?.get("QMP").is_none() {
@@ -47,7 +46,7 @@ impl Qmp {
         self.last_id += 1;
         let id = self.last_id;
         let request = json!({ "execute": command, "arguments": arguments, "id": id });
-        self.stream.get_mut().write_all(format!("{request}\n").as_bytes())?;
+        self.write_request(format!("{request}\n").as_bytes(), deadline)?;
 
         for _ in 0..=MAX_EVENTS_PER_REPLY {
             let mut message = self.read_message(deadline)?;
@@ -68,15 +67,26 @@ impl Qmp {
         Err(invalid("too many events before the reply"))
     }
 
+    /// Writes a request, giving up at `deadline` however slowly QEMU takes it.
+    fn write_request(&mut self, mut rest: &[u8], deadline: Instant) -> io::Result<()> {
+        let stream = self.stream.get_mut();
+        while !rest.is_empty() {
+            stream.set_write_timeout(Some(time_left(deadline)?))?;
+            match stream.write(rest) {
+                Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
+                Ok(written) => rest = &rest[written..],
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    }
+
     /// Reads one line, giving up at `deadline` however the bytes arrive.
     fn read_message(&mut self, deadline: Instant) -> io::Result<Value> {
         let mut line = Vec::new();
         loop {
-            let left = deadline.saturating_duration_since(Instant::now());
-            if left.is_zero() {
-                return Err(io::ErrorKind::TimedOut.into());
-            }
-            self.stream.get_ref().set_read_timeout(Some(left))?;
+            self.stream.get_ref().set_read_timeout(Some(time_left(deadline)?))?;
             let available = self.stream.fill_buf()?;
             if available.is_empty() {
                 return Err(io::ErrorKind::UnexpectedEof.into());
@@ -93,6 +103,12 @@ impl Qmp {
             }
         }
     }
+}
+
+/// The time remaining until `deadline`, or a timeout error if it has passed.
+fn time_left(deadline: Instant) -> io::Result<Duration> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() { Err(io::ErrorKind::TimedOut.into()) } else { Ok(left) }
 }
 
 fn invalid(reason: &'static str) -> io::Error {
@@ -223,6 +239,26 @@ mod tests {
         let (ours, theirs) = UnixStream::pair().unwrap();
         drop(theirs);
         assert!(Qmp::connect(ours, TIMEOUT).is_err(), "closed");
+    }
+
+    /// A peer that stops reading cannot hold a large request open past the deadline.
+    #[test]
+    fn a_peer_that_stops_reading_cannot_outlast_the_deadline() {
+        let (ours, theirs) = UnixStream::pair().unwrap();
+        thread::spawn(move || {
+            let mut reader = BufReader::new(theirs);
+            let _ = reader.get_mut().write_all(GREETING.as_bytes());
+            let _ = reader.read_line(&mut String::new());
+            let _ = reader.get_mut().write_all(&line(READY));
+            // Hold the socket open without reading from it again.
+            thread::sleep(TIMEOUT * 4);
+        });
+        let mut qmp = Qmp::connect(ours, TIMEOUT).unwrap();
+        let started = Instant::now();
+        // Far more than a socket buffer holds, so the write has to wait for the peer.
+        let large = json!({ "padding": "x".repeat(8 * 1024 * 1024) });
+        assert!(qmp.execute("x", large).is_err());
+        assert!(started.elapsed() < TIMEOUT * 2, "took {:?}", started.elapsed());
     }
 
     /// The deadline covers the whole exchange: neither a slow trickle of bytes

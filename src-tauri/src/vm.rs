@@ -216,13 +216,18 @@ fn remove_stale_sessions(root: &Path) {
 /// The process id in a session directory name, `vm-<pid>-<time>`.
 fn session_owner(name: &str) -> Option<u32> {
     let (pid, time) = name.strip_prefix("vm-")?.split_once('-')?;
-    let all_digits = |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
-    (all_digits(pid) && all_digits(time)).then(|| pid.parse().ok())?
+    (is_number(pid) && is_number(time)).then(|| pid.parse().ok())?
 }
 
 fn is_session_file(name: &str) -> bool {
     let frame = name.strip_prefix("frame-").and_then(|rest| rest.strip_suffix(".png"));
-    name == CONTROL_SOCKET || frame.is_some_and(|number| number.parse::<u64>().is_ok())
+    name == CONTROL_SOCKET || frame.is_some_and(is_number)
+}
+
+/// True for a positive whole number written the way this module writes one:
+/// digits only, with no sign and no leading zero.
+fn is_number(text: &str) -> bool {
+    !text.is_empty() && !text.starts_with('0') && text.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 fn private_dir(path: &Path) -> io::Result<()> {
@@ -293,6 +298,16 @@ fn png_size(bytes: &[u8]) -> io::Result<(u32, u32)> {
     }
 }
 
+/// Whether tests that need the real QEMU can run on this machine.
+#[cfg(test)]
+pub fn can_run_here() -> bool {
+    let found = Path::new("/dev/kvm").exists() && Path::new(QEMU).exists();
+    if !found {
+        eprintln!("skipped: needs KVM and QEMU");
+    }
+    found
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -324,14 +339,6 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
-    }
-
-    fn have_qemu() -> bool {
-        let found = Path::new("/dev/kvm").exists() && Path::new(QEMU).exists();
-        if !found {
-            eprintln!("skipped: needs KVM and QEMU");
-        }
-        found
     }
 
     #[test]
@@ -400,11 +407,11 @@ mod tests {
     #[test]
     fn only_session_names_are_recognised() {
         assert_eq!(session_owner("vm-123-456"), Some(123));
-        for name in ["vm-123", "vm-123-", "vm--456", "vm-123-notes", "vm-+123-456", "vm-123-456-7", "xvm-123-456", "notes"] {
+        for name in ["vm-123", "vm-123-", "vm--456", "vm-123-notes", "vm-+123-456", "vm-123-+456", "vm-0123-456", "vm-123-456-7", "xvm-123-456", "notes"] {
             assert_eq!(session_owner(name), None, "{name}");
         }
         assert!(is_session_file("qmp.sock") && is_session_file("frame-12.png"));
-        for name in ["frame-.png", "frame-x.png", "frame-1.png.bak", "notes.txt"] {
+        for name in ["frame-.png", "frame-x.png", "frame-+1.png", "frame-01.png", "frame-1.png.bak", "notes.txt"] {
             assert!(!is_session_file(name), "{name}");
         }
     }
@@ -446,7 +453,7 @@ mod tests {
     /// Runs the real QEMU.
     #[test]
     fn starts_captures_the_screen_and_cleans_up() {
-        if !have_qemu() {
+        if !can_run_here() {
             return;
         }
         let vm = Vm::spawn().unwrap().connect().unwrap();
@@ -474,7 +481,7 @@ mod tests {
     /// Runs the real QEMU. Stopping must not wait for a capture in progress.
     #[test]
     fn kill_does_not_wait_for_a_capture() {
-        if !have_qemu() {
+        if !can_run_here() {
             return;
         }
         let vm = Arc::new(Vm::spawn().unwrap().connect().unwrap());
@@ -497,7 +504,7 @@ mod tests {
     /// Runs the real QEMU. A machine that never connects leaves nothing behind.
     #[test]
     fn a_failed_start_cleans_up() {
-        if !have_qemu() {
+        if !can_run_here() {
             return;
         }
         let spawned = Vm::spawn().unwrap();
