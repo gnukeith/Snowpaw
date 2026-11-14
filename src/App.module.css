@@ -1,14 +1,41 @@
 .frame {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  display: flex;
   height: 100%;
 }
 
 /* The sidebar already keeps one edge of space on its own right side. */
+.main {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: var(--edge) 0;
+  overflow: hidden;
+}
+
 .panel {
-  margin: var(--edge) var(--edge) var(--edge) 0;
+  height: 100%;
+  margin-inline-end: var(--edge);
   overflow: hidden;
   background: var(--surface);
   border: var(--hairline) solid var(--border);
   border-radius: var(--radius-panel);
+}
+
+.empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--space-2);
+  height: 100%;
+  padding: var(--space-8);
+  text-align: center;
+}
+
+.title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+}
+
+.hint {
+  margin-bottom: var(--space-2);
+  color: var(--text-muted);
 }

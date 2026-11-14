@@ -1,0 +1,44 @@
+.dialog {
+  flex-direction: column;
+  width: var(--dialog-width);
+  max-width: calc(100% - var(--space-8));
+  max-height: calc(100% - var(--space-8));
+  padding: 0;
+  overflow: hidden;
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-dialog);
+}
+
+/* Only while open: a closed dialog must keep its default `display: none`. */
+.dialog[open] {
+  display: flex;
+}
+
+.dialog::backdrop {
+  background: var(--scrim);
+}
+
+.wide {
+  composes: dialog;
+  width: var(--content-width);
+  height: var(--dialog-height);
+}
+
+.header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--edge);
+  padding-inline-start: var(--space-4);
+  border-bottom: var(--hairline) solid var(--border);
+}
+
+.title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+}

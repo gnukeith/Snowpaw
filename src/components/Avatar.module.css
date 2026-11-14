@@ -1,0 +1,29 @@
+/* The hue shows through while a picture is being decoded, so nothing flashes. */
+.avatar {
+  display: block;
+  flex: none;
+  border-radius: var(--radius-round);
+  background: var(--avatar-bg);
+  fill: var(--avatar-mark);
+  object-fit: cover;
+}
+
+.sm {
+  width: var(--avatar-sm);
+  height: var(--avatar-sm);
+}
+
+.md {
+  width: var(--avatar-md);
+  height: var(--avatar-md);
+}
+
+.lg {
+  width: var(--avatar-lg);
+  height: var(--avatar-lg);
+}
+
+.xl {
+  width: var(--avatar-xl);
+  height: var(--avatar-xl);
+}

@@ -1,10 +1,12 @@
 import { useState, type ReactNode } from "react";
+import { Dialog } from "../components/Dialog";
 import { modes, type Theme } from "../theme/theme";
 import styles from "./Settings.module.css";
 
 interface Props {
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
+  onClose: () => void;
 }
 
 /* To add a category, add an entry here. */
@@ -14,24 +16,26 @@ export function Settings(props: Props) {
   const [current, setCurrent] = useState<(typeof categories)[number]>(categories[0]);
 
   return (
-    <div className={styles.settings}>
-      <nav className={styles.categories} aria-label="Settings categories">
-        {categories.map((category) => (
-          <button
-            key={category.id}
-            className={styles.category}
-            aria-current={category === current ? "page" : undefined}
-            onClick={() => setCurrent(category)}
-          >
-            {category.label}
-          </button>
-        ))}
-      </nav>
-      <section className={styles.content}>
-        <h1 className={styles.heading}>{current.label}</h1>
-        <current.Panel {...props} />
-      </section>
-    </div>
+    <Dialog title="Settings" wide onClose={props.onClose}>
+      <div className={styles.settings}>
+        <nav className={styles.categories} aria-label="Settings categories">
+          {categories.map((category) => (
+            <button
+              key={category.id}
+              className={styles.category}
+              aria-current={category === current ? "page" : undefined}
+              onClick={() => setCurrent(category)}
+            >
+              {category.label}
+            </button>
+          ))}
+        </nav>
+        <section className={styles.content}>
+          <h2 className={styles.heading}>{current.label}</h2>
+          <current.Panel {...props} />
+        </section>
+      </div>
+    </Dialog>
   );
 }
 
@@ -72,7 +76,7 @@ function Row({ label, hint, children }: { label: string; hint: string; children:
   return (
     <div className={styles.row}>
       <div>
-        <h2 className={styles.label}>{label}</h2>
+        <h3 className={styles.label}>{label}</h3>
         <p className={styles.hint}>{hint}</p>
       </div>
       {children}

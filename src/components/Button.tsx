@@ -5,8 +5,11 @@ import styles from "./Button.module.css";
 interface Props extends Omit<ComponentProps<"button">, "className"> {
   /** The main action of a view. At most one per view. */
   primary?: boolean;
+  /** An action that destroys something. */
+  danger?: boolean;
 }
 
-export function Button({ primary, ...rest }: Props) {
-  return <button {...rest} className={primary ? styles.primary : styles.button} />;
+export function Button({ primary, danger, type = "button", ...rest }: Props) {
+  const look = primary ? styles.primary : danger ? styles.danger : styles.button;
+  return <button {...rest} type={type} className={look} />;
 }

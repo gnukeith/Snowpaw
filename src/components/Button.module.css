@@ -27,3 +27,50 @@
 .primary:hover {
   background: var(--accent-hover);
 }
+
+.danger {
+  composes: button;
+  color: var(--danger);
+}
+
+/* Icon only. Round, and filled instead of outlined, so it reads as a control
+   without a border competing with the icon. */
+.icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-round);
+  background: var(--hover);
+}
+
+.icon:hover {
+  background: var(--selected);
+}
+
+.icon[aria-pressed="true"] {
+  background: var(--selected);
+  color: var(--accent);
+}
+
+.icon:disabled {
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.iconPrimary {
+  composes: icon;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.iconPrimary:hover {
+  background: var(--accent-hover);
+}
+
+.iconPrimary:disabled {
+  background: var(--hover);
+}
