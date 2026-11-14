@@ -17,7 +17,7 @@
   font-weight: var(--weight-strong);
 }
 
-.markdown :is(ul, ol) {
+.list {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -36,6 +36,11 @@
   margin: 0;
   border: 0;
   border-top: var(--hairline) solid var(--tint);
+}
+
+/* A message too long, or too deeply nested, to read as Markdown. */
+.plain {
+  white-space: pre-wrap;
 }
 
 /* Code in a line of text, washed with whatever colour the text around it is,

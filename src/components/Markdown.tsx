@@ -13,12 +13,26 @@ export const PluginsOff = createContext<readonly string[]>([]);
 /* A block's component is loaded once, the first time any message needs it. */
 const loaded = new Map<() => Promise<{ default: ComponentType<BlockProps> }>, ComponentType<BlockProps>>();
 
+/** Longer than this, a message is shown as plain text: reading it as
+    Markdown would hold up the window for too long. About fifty pages. */
+const longest = 100_000;
+
 /** A message's text, read as Markdown. The text may be written by an agent
     that has read anything, so nothing in it can act: raw HTML shows as text,
     a picture is never fetched, and a link shows where it goes instead of
     going there. Fenced blocks and formulas that a plugin draws are handed to
-    that plugin; the rest show as they were written. */
+    that plugin; the rest show as they were written. A message that cannot
+    be read as Markdown, however it fails, is shown as plain text. */
 export function Markdown({ text }: { text: string }) {
+  if (text.length > longest) return <p className={styles.plain}>{text}</p>;
+  return (
+    <Unreadable key={text} text={text}>
+      <Read text={text} />
+    </Unreadable>
+  );
+}
+
+function Read({ text }: { text: string }) {
   // Formulas are looked for only while something draws them. Otherwise a
   // dollar sign is a dollar sign.
   const formulas = blockFor("math", useContext(PluginsOff)) !== undefined;
@@ -30,6 +44,20 @@ export function Markdown({ text }: { text: string }) {
       </ReactMarkdown>
     </div>
   );
+}
+
+/** Shows a message as plain text if reading it failed: text nested deeper
+    than the reader can follow overflows its stack, for one. */
+class Unreadable extends Component<{ text: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? <p className={styles.plain}>{this.props.text}</p> : this.props.children;
+  }
 }
 
 const plain = [remarkGfm];
@@ -78,6 +106,18 @@ const components: Components = {
   // into putting in it.
   img({ alt }) {
     return <span className={styles.address}>[picture{alt ? `: ${alt}` : ""}]</span>;
+  },
+  // Lists get a class, so that the message's list style does not reach into
+  // a list a plugin draws, such as a plot's legend.
+  ul({ children }) {
+    return <ul className={styles.list}>{children}</ul>;
+  },
+  ol({ children, start }) {
+    return (
+      <ol className={styles.list} start={start}>
+        {children}
+      </ol>
+    );
   },
   table({ children }) {
     return (
