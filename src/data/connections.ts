@@ -48,9 +48,10 @@ export function presetOf(id: string): Preset {
   return presets.find((preset) => preset.id === id) ?? presets[presets.length - 1];
 }
 
-export function newConnection(preset: Preset = presets[0]): Connection {
+/** A connection not yet made, under `id`: a new one unless given. */
+export function newConnection(preset: Preset = presets[0], id: string = crypto.randomUUID()): Connection {
   return {
-    id: crypto.randomUUID(),
+    id,
     preset: preset.id,
     name: preset.id === custom ? "" : preset.name,
     address: preset.address,
@@ -61,29 +62,49 @@ export function newConnection(preset: Preset = presets[0]): Connection {
 /** The key the search provider's key is kept under, and where it is sent. */
 export const search = { id: "search", name: "Brave Search", address: "https://api.search.brave.com" };
 
-/** A host name with any port taken off and in lower case, or "" if there is none. */
+/** How an address with its scheme written out starts: "https://". */
+const scheme = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+/** How an address starts when its scheme is written but mistyped, as in
+    "https:/host" or "https:host". A word, a colon and then a digit is a
+    host and its port instead: "gpu-box:8000". */
+const brokenScheme = /^[a-z][a-z0-9+.-]*:(?!\/\/|\d)/i;
+
+/** A host name with any port taken off, in lower case, and without the dot
+    a fully written name may end with, or "" if there is none. */
 function hostOf(typed: string): string {
   try {
-    return new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(typed) ? typed : `http://${typed}`).hostname.toLowerCase();
+    return new URL(scheme.test(typed) ? typed : `http://${typed}`).hostname.toLowerCase().replace(/\.$/, "");
   } catch {
     return "";
   }
 }
 
-/** Whether a host is this computer. What is sent there never leaves it. */
+/** Whether a host is this computer. What is sent there never leaves it. An
+    IPv4 address written as IPv6 ("::ffff:127.0.0.1") reads "::ffff:7fxx:xxxx"
+    once parsed. */
 function isThisComputer(host: string): boolean {
-  return host === "localhost" || host.endsWith(".localhost") || /^127(\.\d+){3}$/.test(host) || host === "[::1]";
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    /^127(\.\d+){3}$/.test(host) ||
+    host === "[::1]" ||
+    /^\[::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}\]$/.test(host)
+  );
 }
 
 /** Whether a host is on the same network as this computer, as far as a name
-    can tell: a private address, or a name with no dot or a local ending. */
+    can tell: a private address, or a name with no dot or a local ending. A
+    name is not proof of where it leads, so this only chooses what to add when
+    no scheme was typed; the warning about keys in the clear does not rely on it. */
 function isNearby(host: string): boolean {
   return (
     isThisComputer(host) ||
     /^10(\.\d+){3}$/.test(host) ||
     /^192\.168(\.\d+){2}$/.test(host) ||
     /^172\.(1[6-9]|2\d|3[01])(\.\d+){2}$/.test(host) ||
-    /^\[f[cde][0-9a-f]*:/.test(host) ||
+    // IPv6 unique local (fc00::/7) and link local (fe80::/10).
+    /^\[(f[cd][0-9a-f]{2}|fe[89ab][0-9a-f]):/.test(host) ||
     /\.(local|lan|internal|home\.arpa)$/.test(host) ||
     (host !== "" && !host.includes(".") && !host.startsWith("["))
   );
@@ -94,13 +115,17 @@ function isNearby(host: string): boolean {
  * trailing slash, query or fragment. Typed without "https://", a server on
  * this computer or network gets "http://" and anything else "https://".
  * Returns "" for what is not an address, and for one with a name and password
- * in it: a key belongs in the key box, where it is kept safe.
+ * in it: a key belongs in the key box, where it is kept safe. A mistyped
+ * scheme or a control character is refused, not guessed at, because a guess
+ * would send the key somewhere the person did not mean.
  */
 export function cleanAddress(text: unknown): string {
   if (typeof text !== "string") return "";
   let typed = text.trim();
-  if (!typed) return "";
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(typed)) {
+  // The parser would quietly drop a line break inside a host name and join
+  // the two halves into another name.
+  if (!typed || /[\u0000-\u001f\u007f]/.test(typed) || brokenScheme.test(typed)) return "";
+  if (!scheme.test(typed)) {
     typed = `${isNearby(hostOf(typed)) ? "http" : "https"}://${typed}`;
   }
   let url: URL;
@@ -131,6 +156,10 @@ export function hostLabel(address: string): string {
 
 const maxModelLength = 200;
 
+/** How every connection's id looks: `crypto.randomUUID` made it. Any other
+    could be the search key's ("search") and forget it on removal. */
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 /**
  * Turns whatever was in storage into connections. Entries that are malformed,
  * have no usable address or repeat an id are dropped, so the rest of the app
@@ -145,7 +174,7 @@ export function parseConnections(saved: unknown): Connection[] {
     const { id, preset, model } = entry;
     const name = cleanName(entry.name);
     const address = cleanAddress(entry.address);
-    if (typeof id !== "string" || !id || ids.has(id) || !name || !address) continue;
+    if (typeof id !== "string" || !uuid.test(id) || ids.has(id) || !name || !address) continue;
     ids.add(id);
     connections.push({
       id,

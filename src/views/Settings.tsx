@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Avatar } from "../components/Avatar";
 import { Button } from "../components/Button";
 import { Dialog } from "../components/Dialog";
@@ -31,7 +31,7 @@ export interface AppearanceProps {
 
 export interface ConnectionsProps {
   connections: Connection[];
-  onConnectionsChange: (connections: Connection[]) => void;
+  onConnectionsChange: Dispatch<SetStateAction<Connection[]>>;
 }
 
 interface Props extends ProfileProps, AppearanceProps, ConnectionsProps {

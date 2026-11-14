@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { Button } from "../components/Button";
+import form from "../components/Form.module.css";
 import { Input } from "../components/Input";
 import { Row } from "../components/Row";
 import { describeFailure, hostLabel, search, type Connection } from "../data/connections";
@@ -9,40 +10,65 @@ import styles from "./Connections.module.css";
 
 interface ModelsProps {
   connections: Connection[];
-  onChange: (connections: Connection[]) => void;
+  /** Takes a change to make to the list as it is when the change lands, so
+      an answer that arrives late cannot undo what happened meanwhile. */
+  onChange: Dispatch<SetStateAction<Connection[]>>;
 }
 
 /** The model providers Snowpaw is connected to, and the form that adds one. */
 export function Models({ connections, onChange }: ModelsProps) {
-  // The id of the connection in the form, "new" for one being added, or null
-  // for the list. With nothing connected there is no list to show, only the form.
-  const [editing, setEditing] = useState<string | null>(null);
-  const open = editing ?? (connections.length === 0 ? "new" : null);
+  // The id of the connection in the form, or null for the list. A new
+  // connection gets its id when its form opens, so the form stays the same
+  // one when the connection is kept under that id.
+  const [open, setOpen] = useState<string | null>(null);
+  // With nothing connected there is no list, only a form: this is its id,
+  // made afresh after each removal so a removed connection's form is gone.
+  const [first, setFirst] = useState(() => crypto.randomUUID());
+  // Whether the list is shown because a form was just closed, so focus can
+  // be put back in it.
+  const [returned, setReturned] = useState(false);
+  const another = useRef<HTMLButtonElement>(null);
 
-  if (open) {
+  const id = open ?? (connections.length === 0 ? first : null);
+
+  useEffect(() => {
+    if (id === null && returned) another.current?.focus();
+  }, [id, returned]);
+
+  function close() {
+    setOpen(null);
+    setReturned(true);
+  }
+
+  if (id !== null) {
     return (
       <>
         {connections.length === 0 && (
-          <p className={styles.lead}>
+          <p className={form.lead}>
             Agents think with a model. Connect a provider you have a key for, or a server of your own.
           </p>
         )}
         <ConnectionForm
-          // A new form for each connection, so one's half-typed key never
-          // carries over to another.
-          key={open}
-          connection={connections.find((other) => other.id === open)}
+          key={id}
+          id={id}
+          connection={connections.find((other) => other.id === id)}
+          autoFocus={open !== null}
           onSave={(saved) => {
-            const known = connections.some((other) => other.id === saved.id);
-            onChange(known ? connections.map((other) => (other.id === saved.id ? saved : other)) : [...connections, saved]);
-            // The form stays as it is: what was "new" is now this connection.
-            setEditing((current) => current ?? "new");
+            onChange((list) =>
+              list.some((other) => other.id === saved.id)
+                ? list.map((other) => (other.id === saved.id ? saved : other))
+                : [...list, saved],
+            );
+            // The first connection's form stays open once the list is no
+            // longer empty, so its model can still be chosen.
+            setOpen(saved.id);
           }}
           onRemove={(removed) => {
-            onChange(connections.filter((other) => other.id !== removed.id));
-            setEditing(null);
+            onChange((list) => list.filter((other) => other.id !== removed));
+            setFirst(crypto.randomUUID());
+            close();
           }}
-          onClose={connections.length > 0 ? () => setEditing(null) : undefined}
+          onClose={connections.length > 0 ? close : undefined}
         />
       </>
     );
@@ -50,18 +76,22 @@ export function Models({ connections, onChange }: ModelsProps) {
 
   return (
     <>
-      <p className={styles.lead}>The providers your agents can think with.</p>
+      <p className={form.lead}>The providers your agents can think with.</p>
       {connections.map((connection) => (
         <Row
           key={connection.id}
           label={connection.name}
           hint={`${connection.model || "No model chosen"} at ${hostLabel(connection.address)}`}
         >
-          <Button onClick={() => setEditing(connection.id)}>Edit</Button>
+          <Button aria-label={`Edit ${connection.name}`} onClick={() => setOpen(connection.id)}>
+            Edit
+          </Button>
         </Row>
       ))}
       <div className={styles.actions}>
-        <Button onClick={() => setEditing("new")}>Connect another</Button>
+        <Button ref={another} onClick={() => setOpen(crypto.randomUUID())}>
+          Connect another
+        </Button>
       </div>
     </>
   );
@@ -73,17 +103,24 @@ type Outcome =
   | { state: "connected" }
   | { state: "failed"; why: string };
 
-/** The key for web search. One provider for now, so there is no list. */
+/** The key for web search. One provider for now, so there is no list. The
+    key is handled as a model provider's is: read once, then let go. */
 export function Search() {
-  const [key, setKey] = useState("");
-  const [saved, setSaved] = useState(false);
+  const keyBox = useRef<HTMLInputElement>(null);
+  const [typed, setTyped] = useState(false);
+  // Unknown until the keyring has answered.
+  const [saved, setSaved] = useState<boolean>();
   const [outcome, setOutcome] = useState<Outcome>({ state: "idle" });
+  // Goes up on every save or forget, so a late answer about whether a key
+  // is saved cannot overwrite what it changed.
+  const changes = useRef(0);
   const working = outcome.state === "working";
 
   useEffect(() => {
+    const asked = changes.current;
     let current = true;
     hasKey(search.id, search.address).then(
-      (has) => current && setSaved(has),
+      (has) => current && changes.current === asked && setSaved(has),
       () => {},
     );
     return () => {
@@ -91,14 +128,20 @@ export function Search() {
     };
   }, []);
 
-  async function connect() {
+  async function connect(event: FormEvent) {
+    event.preventDefault();
+    if (working) return;
+    // Read once and let go of at once, whether or not it works.
+    const key = keyBox.current?.value.trim() ?? "";
+    if (keyBox.current) keyBox.current.value = "";
+    setTyped(false);
     setOutcome({ state: "working" });
-    let has = saved;
+    let has = saved === true;
     try {
       if (key) {
+        changes.current += 1;
         await saveKey(search.id, search.address, key);
         has = true;
-        setKey("");
         setSaved(true);
       }
       await testSearch();
@@ -109,35 +152,42 @@ export function Search() {
   }
 
   async function forget() {
-    setOutcome({ state: "idle" });
+    if (working) return;
+    setOutcome({ state: "working" });
     try {
+      changes.current += 1;
       await forgetKey(search.id);
       setSaved(false);
+      setOutcome({ state: "idle" });
     } catch (failure) {
       setOutcome({ state: "failed", why: describeFailure(failure) });
     }
   }
 
   return (
-    <>
-      <p className={styles.lead}>
+    <form onSubmit={connect}>
+      <p className={form.lead}>
         With a search key, agents can look things up on the web. Without one they work from what they know and what
         you give them.
       </p>
       <Row label={search.name} hint="Make a key in Brave's API dashboard.">
         <div className={styles.field}>
           <Input
+            ref={keyBox}
             type="password"
-            value={key}
             aria-label={`${search.name} key`}
             placeholder={saved ? "Saved. Type to replace it." : "Paste your key"}
             disabled={working}
-            onChange={(event) => setKey(event.target.value)}
+            onChange={(event) => {
+              setTyped(event.target.value !== "");
+              setOutcome({ state: "idle" });
+            }}
           />
         </div>
       </Row>
       <div className={styles.actions}>
-        <p className={styles.status} role="status" data-state={outcome.state}>
+        <p className={form.status} role="status" data-state={outcome.state}>
+          {outcome.state === "working" && "Working on it."}
           {outcome.state === "connected" && "Connected. A test search came back."}
           {outcome.state === "failed" && outcome.why}
         </p>
@@ -146,13 +196,13 @@ export function Search() {
             Forget the key
           </Button>
         )}
-        <Button primary={!saved} onClick={connect} disabled={working || (!key && !saved)}>
-          {working ? "Connecting" : saved && !key ? "Test" : "Connect"}
+        <Button primary={!saved} type="submit" disabled={working || (!typed && !saved)}>
+          {saved && !typed ? "Test" : "Connect"}
         </Button>
       </div>
       <p className={styles.note}>
         The key is kept in your desktop's keyring and sent only to Brave. A test uses one search from your allowance.
       </p>
-    </>
+    </form>
   );
 }

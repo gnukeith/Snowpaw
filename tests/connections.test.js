@@ -12,8 +12,10 @@ import {
   sendsKeyInTheClear,
 } from "../src/data/connections.ts";
 
+/* Ids as crypto.randomUUID makes them, which is the only kind stored. */
+const ids = { a: "0b5c8f7e-2f7a-4c1e-9d1a-3f6c1a2b4c5d", b: "6a1d9e2c-7b3f-4e8a-a2c4-5d6e7f8a9b0c", c: "c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f" };
 const connection = (id, extra = {}) => ({
-  id,
+  id: ids[id] ?? id,
   preset: "openai",
   name: `Provider ${id}`,
   address: "https://api.example.com/v1",
@@ -39,6 +41,22 @@ test("an address typed without a scheme gets one that fits where it points", () 
   assert.equal(cleanAddress("172.32.4.1:8000"), "https://172.32.4.1:8000");
   assert.equal(cleanAddress("gpu-box:8000/v1"), "http://gpu-box:8000/v1");
   assert.equal(cleanAddress("inference.local/v1"), "http://inference.local/v1");
+  assert.equal(cleanAddress("[::ffff:127.0.0.1]:8000/v1"), "http://[::ffff:7f00:1]:8000/v1");
+  assert.equal(cleanAddress("[fe80::1]:8000"), "http://[fe80::1]:8000");
+  assert.equal(cleanAddress("[fd12::1]:8000"), "http://[fd12::1]:8000");
+  assert.equal(cleanAddress("[fec0::1]:8000"), "https://[fec0::1]:8000");
+  assert.equal(cleanAddress("[2001:db8::1]:8000"), "https://[2001:db8::1]:8000");
+});
+
+test("a mistyped scheme or a control character is refused, not guessed at", () => {
+  assert.equal(cleanAddress("https:/api.example.com/v1"), "");
+  assert.equal(cleanAddress("https:api.example.com"), "");
+  assert.equal(cleanAddress("http:/localhost:8000"), "");
+  assert.equal(cleanAddress("https://api.exa\nmple.com/v1"), "");
+  assert.equal(cleanAddress("https://api.example.com/v1\t"), "https://api.example.com/v1");
+  assert.equal(cleanAddress("api.example.com\u0000/v1"), "");
+  // A host and its port still need no scheme.
+  assert.equal(cleanAddress("gpu-box:8000/v1"), "http://gpu-box:8000/v1");
 });
 
 test("what is not a web address is not an address", () => {
@@ -58,6 +76,9 @@ test("a key is in the clear over plain http, except to this computer", () => {
   assert.equal(sendsKeyInTheClear("http://localhost:11434/v1"), false);
   assert.equal(sendsKeyInTheClear("http://127.0.0.1:1234/v1"), false);
   assert.equal(sendsKeyInTheClear("http://[::1]:8080"), false);
+  assert.equal(sendsKeyInTheClear("http://localhost.:8080/v1"), false);
+  assert.equal(sendsKeyInTheClear("http://[::ffff:127.0.0.1]:8000/v1"), false);
+  assert.equal(sendsKeyInTheClear("http://[::ffff:10.0.0.1]:8000/v1"), true);
   assert.equal(sendsKeyInTheClear("https://api.example.com/v1"), false);
   assert.equal(sendsKeyInTheClear("not an address"), false);
 });
@@ -82,6 +103,7 @@ test("every preset has a usable address, apart from the one you type yourself", 
 });
 
 test("a new connection starts from its preset", () => {
+  assert.equal(newConnection(presetOf("openai"), ids.a).id, ids.a);
   const made = newConnection(presetOf("openai"));
   assert.equal(made.name, "OpenAI");
   assert.equal(made.address, presetOf("openai").address);
@@ -106,6 +128,9 @@ test("anything that is not a list of connections is dropped", () => {
       connection(""),
       connection(7),
       connection("a", { name: "  " }),
+      connection("search"),
+      connection("new"),
+      connection(ids.a.toUpperCase()),
       connection("b", { address: "ftp://example.com" }),
       connection("c", { address: "https://user:pw@example.com" }),
     ]),
@@ -119,7 +144,7 @@ test("a repeated id keeps the first, and loose fields are tidied", () => {
     connection("a", { name: "Second" }),
   ]);
   assert.deepEqual(parsed, [
-    { id: "a", preset: custom, name: "My server", address: "http://localhost:8000/v1", model: "" },
+    { id: ids.a, preset: custom, name: "My server", address: "http://localhost:8000/v1", model: "" },
   ]);
 });
 
