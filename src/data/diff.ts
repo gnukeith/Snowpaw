@@ -21,6 +21,18 @@ export interface FileDiff {
   hunks: Hunk[];
 }
 
+export interface Diff {
+  files: FileDiff[];
+  /** True when the diff was too large and only its start was read. */
+  truncated: boolean;
+}
+
+/* A diff comes from outside the app and can be any size. Reading stops at
+   these limits, so a huge one costs a bounded amount of work to read and to
+   draw. Rows are files, hunks and lines: everything that takes space on screen. */
+export const maxDiffLength = 1_000_000;
+export const maxDiffRows = 5_000;
+
 const hunkHeader = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 const escapes: Record<string, string> = { n: "\n", t: "\t", r: "\r" };
@@ -64,10 +76,12 @@ function gitPath(line: string): string {
  * Reads a unified diff, as `git diff` or `diff -u` writes it, into files,
  * hunks and numbered lines. The text comes from an agent's environment, so
  * nothing in it is trusted: lines that fit no part of the format are skipped,
- * and the result is only ever shown as text.
+ * the result is only ever shown as text, and reading stops at the limits above.
  */
-export function parseDiff(text: string): FileDiff[] {
+export function parseDiff(text: string): Diff {
   const files: FileDiff[] = [];
+  let truncated = text.length > maxDiffLength;
+  let rows = 0;
   let file: FileDiff | undefined;
   let hunk: Hunk | undefined;
   // The numbers the next old and new lines get, and how many of each the
@@ -82,19 +96,28 @@ export function parseDiff(text: string): FileDiff[] {
     file = { path: name, added: 0, removed: 0, hunks: [] };
     files.push(file);
     hunk = undefined;
+    rows += 1;
   };
 
-  for (const line of text.split("\n")) {
+  for (const line of text.slice(0, maxDiffLength).split("\n")) {
+    if (rows >= maxDiffRows) {
+      // Full. Anything more than the blank after a final newline is left out.
+      if (line === "") continue;
+      truncated = true;
+      break;
+    }
     if (file && hunk && (owedOld > 0 || owedNew > 0)) {
       const body = line.slice(1);
       if (line[0] === "+") {
         hunk.lines.push({ kind: "add", text: body, after: after++ });
+        rows += 1;
         file.added += 1;
         owedNew -= 1;
         continue;
       }
       if (line[0] === "-") {
         hunk.lines.push({ kind: "remove", text: body, before: before++ });
+        rows += 1;
         file.removed += 1;
         owedOld -= 1;
         continue;
@@ -103,6 +126,7 @@ export function parseDiff(text: string): FileDiff[] {
       // an empty line, so an empty line counts as one too.
       if (line[0] === " " || line === "") {
         hunk.lines.push({ kind: "context", text: body, before: before++, after: after++ });
+        rows += 1;
         owedOld -= 1;
         owedNew -= 1;
         continue;
@@ -133,8 +157,9 @@ export function parseDiff(text: string): FileDiff[] {
         owedNew = Number(match[4] ?? 1);
         hunk = { header: line, lines: [] };
         file.hunks.push(hunk);
+        rows += 1;
       }
     }
   }
-  return files;
+  return { files, truncated };
 }

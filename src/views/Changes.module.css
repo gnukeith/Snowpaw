@@ -7,6 +7,11 @@
   overflow-y: auto;
 }
 
+.notice {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
 .file {
   flex: none;
   overflow: hidden;

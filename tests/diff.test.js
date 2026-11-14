@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseDiff } from "../src/data/diff.ts";
+import { maxDiffLength, maxDiffRows, parseDiff } from "../src/data/diff.ts";
+
+/** The files of a diff small enough to be read whole. */
+function read(text) {
+  const { files, truncated } = parseDiff(text);
+  assert.equal(truncated, false);
+  return files;
+}
 
 const gitDiff = `diff --git a/src/parse.ts b/src/parse.ts
 index 1f2e3d4..5a6b7c8 100644
@@ -24,7 +31,7 @@ new file mode 100644
 `;
 
 test("a git diff is split into files, hunks and numbered lines", () => {
-  const [parse, notes] = parseDiff(gitDiff);
+  const [parse, notes] = read(gitDiff);
 
   assert.equal(parse.path, "src/parse.ts");
   assert.equal(parse.added, 2);
@@ -47,7 +54,7 @@ test("a git diff is split into files, hunks and numbered lines", () => {
 });
 
 test("a deleted file keeps the name it had", () => {
-  const [file] = parseDiff(`diff --git a/old.txt b/old.txt
+  const [file] = read(`diff --git a/old.txt b/old.txt
 deleted file mode 100644
 --- a/old.txt
 +++ /dev/null
@@ -60,7 +67,7 @@ deleted file mode 100644
 });
 
 test("a rename with no text changes is a file with no hunks", () => {
-  const [file] = parseDiff(`diff --git a/before.txt b/after.txt
+  const [file] = read(`diff --git a/before.txt b/after.txt
 similarity index 100%
 rename from before.txt
 rename to after.txt
@@ -70,7 +77,7 @@ rename to after.txt
 });
 
 test("paths that git quotes are read back as they are", () => {
-  const files = parseDiff(String.raw`diff --git "a/caf\303\251 \"old\".txt" "b/caf\303\251 \"new\".txt"
+  const files = read(String.raw`diff --git "a/caf\303\251 \"old\".txt" "b/caf\303\251 \"new\".txt"
 similarity index 100%
 rename from "caf\303\251 \"old\".txt"
 rename to "caf\303\251 \"new\".txt"
@@ -98,7 +105,7 @@ diff --git a/my file.txt b/my file.txt
 });
 
 test("quoting that cannot be undone leaves the path as written", () => {
-  const [file] = parseDiff(String.raw`--- "a/bad\377.txt"
+  const [file] = read(String.raw`--- "a/bad\377.txt"
 +++ "b/bad\377.txt"
 @@ -1 +1 @@
 -a
@@ -108,7 +115,7 @@ test("quoting that cannot be undone leaves the path as written", () => {
 });
 
 test("a plain unified diff, without git's lines, is read too", () => {
-  const files = parseDiff(`--- one.txt\t2026-01-01 10:00:00
+  const files = read(`--- one.txt\t2026-01-01 10:00:00
 +++ one.txt\t2026-01-02 10:00:00
 @@ -1,2 +1,2 @@
  same
@@ -128,7 +135,7 @@ test("a plain unified diff, without git's lines, is read too", () => {
 });
 
 test("a removed line that looks like a file header stays a removed line", () => {
-  const [file, ...rest] = parseDiff(`--- list.md
+  const [file, ...rest] = read(`--- list.md
 +++ list.md
 @@ -1,2 +1,2 @@
 --- a divider
@@ -144,7 +151,7 @@ test("a removed line that looks like a file header stays a removed line", () => 
 });
 
 test("the note about a missing final newline is not a line", () => {
-  const [file] = parseDiff(`--- a.txt
+  const [file] = read(`--- a.txt
 +++ a.txt
 @@ -1 +1 @@
 -old
@@ -156,13 +163,13 @@ test("the note about a missing final newline is not a line", () => {
 });
 
 test("text that is not a diff gives nothing, and never throws", () => {
-  assert.deepEqual(parseDiff(""), []);
-  assert.deepEqual(parseDiff("hello\n@@ -1 +1 @@\n+orphan\n"), []);
-  assert.deepEqual(parseDiff("@@ -1,99999999999 +1,99999999999 @@\n"), []);
+  assert.deepEqual(read(""), []);
+  assert.deepEqual(read("hello\n@@ -1 +1 @@\n+orphan\n"), []);
+  assert.deepEqual(read("@@ -1,99999999999 +1,99999999999 @@\n"), []);
 });
 
 test("a hunk that promises more lines than it has ends where the next file starts", () => {
-  const files = parseDiff(`diff --git a/one.txt b/one.txt
+  const files = read(`diff --git a/one.txt b/one.txt
 --- a/one.txt
 +++ b/one.txt
 @@ -1,9 +1,9 @@
@@ -182,6 +189,33 @@ diff --git a/two.txt b/two.txt
 });
 
 test("a hunk that promises more lines than follow just ends", () => {
-  const [file] = parseDiff("--- a\n+++ a\n@@ -1,50 +1,50 @@\n-x\n+y");
+  const [file] = read("--- a\n+++ a\n@@ -1,50 +1,50 @@\n-x\n+y");
   assert.deepEqual(file.hunks[0].lines.map((line) => line.kind), ["remove", "add"]);
+});
+
+test("reading stops at the row limit and says so", () => {
+  const { files, truncated } = parseDiff(`--- a\n+++ a\n@@ -0,0 +1,${maxDiffRows * 2} @@\n${"+x\n".repeat(maxDiffRows * 2)}`);
+  assert.equal(truncated, true);
+  // The file and the hunk are rows too.
+  assert.equal(files[0].hunks[0].lines.length, maxDiffRows - 2);
+});
+
+test("files without hunks count towards the row limit", () => {
+  const { files, truncated } = parseDiff("diff --git a/x b/x\n".repeat(maxDiffRows * 2));
+  assert.equal(truncated, true);
+  assert.equal(files.length, maxDiffRows);
+});
+
+test("text beyond the length limit is not read", () => {
+  const line = `+${"x".repeat(999)}\n`;
+  const count = Math.ceil(maxDiffLength / line.length) + 10;
+  const { files, truncated } = parseDiff(`--- a\n+++ a\n@@ -0,0 +1,${count} @@\n${line.repeat(count)}`);
+  assert.equal(truncated, true);
+  assert.ok(files[0].hunks[0].lines.length < count);
+});
+
+test("a diff exactly at the limits is read whole", () => {
+  const { files, truncated } = parseDiff(`--- a\n+++ a\n@@ -0,0 +1,${maxDiffRows - 2} @@\n${"+x\n".repeat(maxDiffRows - 2)}`);
+  assert.equal(truncated, false);
+  assert.equal(files[0].added, maxDiffRows - 2);
 });

@@ -8,7 +8,7 @@ const marks = { add: "+", remove: "−", context: "" };
 
 /** The changes an agent made to files, as a diff to read through. */
 export function Changes({ agent, diff }: { agent: Agent; diff: string }) {
-  const files = useMemo(() => parseDiff(diff), [diff]);
+  const { files, truncated } = useMemo(() => parseDiff(diff), [diff]);
 
   if (files.length === 0) {
     return (
@@ -20,6 +20,11 @@ export function Changes({ agent, diff }: { agent: Agent; diff: string }) {
   }
   return (
     <div className={styles.changes}>
+      {truncated && (
+        <p className={styles.notice}>
+          These changes are too large to show in full. This is the start of them.
+        </p>
+      )}
       {files.map((file, index) => (
         <details key={index} className={styles.file} open>
           <summary className={styles.summary}>
