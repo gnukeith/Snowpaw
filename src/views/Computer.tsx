@@ -5,12 +5,21 @@ import styles from "./Computer.module.css";
 
 /** Time between screen captures. The Rust side enforces its own minimum too. */
 const frameInterval = 500;
+/** Time between looks at a start that this view is not itself waiting for. */
+const statusInterval = 1000;
 
-/** "unknown" until the Rust side has said whether the machine is on. */
-type Power = "unknown" | "off" | "on";
+/**
+ * What the Rust side says about the machine. "starting" is everything between
+ * a start being let in and its machine either running or seen to be gone.
+ * "unknown" is this view's own: the Rust side could not be asked.
+ */
+type Power = "off" | "starting" | "on" | "unknown";
+
+const ask = () => invoke<Power>("vm_status").catch((): Power => "unknown");
 
 export function Computer() {
-  const [power, setPower] = useState<Power>("unknown");
+  // Null until the first answer arrives.
+  const [power, setPower] = useState<Power | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // True while the machine runs but its latest frame could not be drawn.
@@ -22,14 +31,24 @@ export function Computer() {
 
   useEffect(() => {
     let live = true;
-    invoke<boolean>("vm_status").then(
-      (running) => live && setPower(running ? "on" : "off"),
-      (reason) => live && setError(String(reason)),
-    );
+    ask().then((now) => live && setPower(now));
     return () => {
       live = false;
     };
   }, []);
+
+  // A start that this view is not waiting for itself (it was begun before the
+  // view was opened, or it failed and its machine is still being ended) is
+  // looked at again until it has settled.
+  useEffect(() => {
+    if (power !== "starting" || busy) return;
+    let live = true;
+    const timer = setInterval(() => ask().then((now) => live && setPower(now)), statusInterval);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [power, busy]);
 
   // While the machine is on, ask for one frame at a time and paint it. The
   // next request goes out only after the last frame is on screen, so frames
@@ -45,12 +64,11 @@ export function Computer() {
             png = await invoke<ArrayBuffer>("vm_frame");
           } catch (reason) {
             // The Rust side ends a machine whose screen it cannot read. Ask
-            // whether it managed to, so that Stop stays on screen if not, or
-            // if there is no telling.
-            const running = await invoke<boolean>("vm_status").catch(() => true);
+            // whether it managed to, and do not claim more than the answer.
+            const now = await ask();
             if (live) {
               setError(String(reason));
-              if (!running) setPower("off");
+              setPower(now);
             }
             return;
           }
@@ -87,16 +105,15 @@ export function Computer() {
   async function turn(on: boolean) {
     setBusy(true);
     setError(null);
+    if (on) setPower("starting");
     try {
       await invoke(on ? "vm_start" : "vm_stop");
       refocus.current = true;
       setPower(on ? "on" : "off");
     } catch (reason) {
       setError(String(reason));
-      // A start or stop that failed can still leave a machine running. Ask,
-      // and if there is no telling, leave the screen as it is.
-      const running = await invoke<boolean>("vm_status").catch(() => null);
-      if (running !== null) setPower(running ? "on" : "off");
+      // A start or stop that failed can still leave a machine there. Ask.
+      setPower(await ask());
     } finally {
       setBusy(false);
     }
@@ -112,6 +129,13 @@ export function Computer() {
       {message}
     </p>
   );
+  const stop = (
+    <Button ref={action} disabled={busy} onClick={() => turn(false)}>
+      Stop
+    </Button>
+  );
+
+  if (power === null) return null;
 
   if (power === "on") {
     return (
@@ -120,9 +144,7 @@ export function Computer() {
         <header className={styles.bar}>
           <span className={styles.status}>Running</span>
           {problem}
-          <Button ref={action} disabled={busy} onClick={() => turn(false)}>
-            Stop
-          </Button>
+          {stop}
         </header>
         <canvas
           ref={screen}
@@ -134,15 +156,36 @@ export function Computer() {
     );
   }
 
+  if (power === "starting") {
+    return (
+      <div className={styles.off}>
+        <h1 className={styles.title}>The computer is starting</h1>
+        <p className={styles.hint}>
+          This takes a few seconds. If the start fails, this stays on screen until its machine has
+          been ended.
+        </p>
+        {problem}
+        {stop}
+      </div>
+    );
+  }
+
   if (power === "unknown") {
-    // Nothing to show while the first answer is on its way. If it failed, say
-    // so: the machine may be running, so do not claim that it is off.
-    return error ? (
+    // The machine may be running, so do not claim that it is off, and keep
+    // Stop within reach.
+    return (
       <div className={styles.off}>
         <h1 className={styles.title}>The computer's state could not be read</h1>
+        <p className={styles.hint}>It may be running.</p>
         {problem}
+        <div className={styles.actions}>
+          <Button disabled={busy} onClick={() => ask().then(setPower)}>
+            Check again
+          </Button>
+          {stop}
+        </div>
       </div>
-    ) : null;
+    );
   }
 
   return (

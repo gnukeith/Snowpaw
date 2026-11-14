@@ -84,7 +84,8 @@ pub struct Vm {
 }
 
 /// A machine whose sandbox has been started but which has not connected to
-/// the app yet. No guest runs before it has, so dropping it leaves no guest.
+/// the app yet. No guest runs until `connect` tells the keeper to go, so
+/// dropping it before then leaves no guest.
 pub struct Spawned {
     // Fields are dropped in this order, and it matters: the socket has to
     // close before the sandbox is waited for (see `Process::kill`).
@@ -147,7 +148,8 @@ impl Process {
                 true
             }
         };
-        // bubblewrap has nothing left to do. Killed first, so the wait is short.
+        // bubblewrap is only waited for by now. Killed first, so that the
+        // wait does not depend on what is left in the sandbox.
         let _ = child.kill();
         let _ = child.wait();
         gone
@@ -246,6 +248,7 @@ impl Spawned {
                 // so nothing else can start, until that guest is seen gone.
                 while !self.process.kill() {
                     eprintln!("vm: still waiting for a machine that failed to start to end");
+                    thread::sleep(Duration::from_secs(1));
                 }
                 Err(error)
             }
@@ -745,7 +748,7 @@ mod tests {
         let held: Vec<_> = fs::read_dir(format!("/proc/{qemu}/fd")).unwrap().map(|fd| fs::read_link(fd.unwrap().path()).unwrap()).collect();
         assert!(held.len() > 3, "QEMU's own descriptors are listed: {held:?}");
         assert!(!held.contains(&secret), "the app's open file did not reach QEMU");
-        // The keeper holds a handle on the app. QEMU must not: it could kill through it.
+        // The keeper holds a handle on the app. QEMU has no business with one.
         assert!(!held.iter().any(|open| open.to_string_lossy().contains("pidfd")), "{held:?}");
 
         let mut screen = lock(&vm.screen);

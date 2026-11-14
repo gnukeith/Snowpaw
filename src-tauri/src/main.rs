@@ -66,6 +66,19 @@ impl Computer {
         None
     }
 
+    /// What the webview is told: "off", "starting" or "on". Only "off" says
+    /// that no machine is there. "starting" covers everything from a start
+    /// being let in until its machine runs or has been seen to be gone.
+    fn status(&self) -> &'static str {
+        // Lets a machine that has ended give up its place first.
+        self.running();
+        match self.lock().state {
+            Place::Off => "off",
+            Place::Starting => "starting",
+            Place::On(_) => "on",
+        }
+    }
+
     /// Lets a start in if the place is free. `Ok(None)` means a machine is
     /// already running; `Ok(Some(ticket))` must be handed to `finish_start`.
     fn begin_start(&self) -> Result<Option<u64>, &'static str> {
@@ -168,10 +181,10 @@ fn vm_stop(computer: State<'_, Computer>) -> Result<(), &'static str> {
     computer.stop(false).then_some(()).ok_or("The computer could not be stopped. Try again.")
 }
 
-/// Whether the computer is running.
+/// Whether the computer is "off", "starting" or "on".
 #[tauri::command(async)]
-fn vm_status(computer: State<'_, Computer>) -> bool {
-    computer.running().is_some()
+fn vm_status(computer: State<'_, Computer>) -> &'static str {
+    computer.status()
 }
 
 /// The guest's screen as PNG bytes.
@@ -221,12 +234,14 @@ mod tests {
             return;
         }
         let computer = Computer::default();
+        assert_eq!(computer.status(), "off");
         let ticket = computer.begin_start().unwrap().expect("nothing is running yet");
+        assert_eq!(computer.status(), "starting");
         assert_eq!(computer.finish_start(ticket, machine()), Ok(()));
-        assert!(computer.running().is_some());
+        assert_eq!(computer.status(), "on");
         assert_eq!(computer.begin_start(), Ok(None));
         assert!(computer.stop(false));
-        assert!(computer.running().is_none());
+        assert_eq!(computer.status(), "off");
     }
 
     #[test]
@@ -235,9 +250,11 @@ mod tests {
         let ticket = computer.begin_start().unwrap().unwrap();
         assert!(computer.begin_start().is_err());
         assert!(computer.running().is_none(), "nothing is running yet");
+        assert_eq!(computer.status(), "starting", "but the place is not reported as free");
 
         // A start that fails gives the place back.
         assert!(computer.finish_start(ticket, Err(io::Error::other("no machine"))).is_err());
+        assert_eq!(computer.status(), "off");
         assert!(computer.begin_start().unwrap().is_some());
     }
 

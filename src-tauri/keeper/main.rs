@@ -2,10 +2,10 @@
 //! a machine cannot outlive the app.
 //!
 //! It is started by bubblewrap as process 1 of the sandbox's own process
-//! numbering. Linux ends every process in such a sandbox the moment its
-//! process 1 exits, and does not let the others kill or stop it. So the
-//! machine lives exactly as long as this program does, and this program
-//! lives exactly as long as its connection to the app:
+//! numbering. Linux ends every process in such a sandbox when its process 1
+//! exits, and does not let the others kill or stop it. So the machine ends
+//! when this program does, and this program ends when the machine exits,
+//! when its connection to the app ends, or when the app's process ends:
 //!
 //! 1. It connects to the socket the app listens on. No app, no machine.
 //! 2. It waits for the app to say go, which the app does once it holds a
@@ -18,9 +18,9 @@
 //! the app once forked could hold it after the app is gone.
 //!
 //! build.rs compiles this file on its own and vm.rs carries it inside the
-//! app. It uses the standard library and nothing else, so the few system
-//! calls the library does not offer are declared here, with their Linux
-//! numbers for x86-64 and arm64.
+//! app. It uses the standard library and nothing else, so the few C
+//! library functions the standard library does not offer are declared
+//! here, with Linux's values for their options on x86-64 and arm64.
 
 use std::env;
 use std::io::Read;
@@ -47,8 +47,9 @@ struct Wait {
     revents: i16,
 }
 
-/// Waits until the app sends something or is gone. True only if the app's
-/// process is still there and its connection has something to read.
+/// Waits until the app sends something or is gone. True only if, at that
+/// moment, the app's process was still there and its connection had
+/// something to read and nothing wrong with it.
 fn app_spoke(app: &UnixStream, app_process: i32) -> bool {
     let mut waits = [
         Wait { fd: app.as_raw_fd(), events: POLLIN, revents: 0 },
