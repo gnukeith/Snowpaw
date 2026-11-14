@@ -5,7 +5,9 @@ import type { Message } from "./conversation.ts";
 
 /* Asking a model for a reply. The Rust side makes the request, with the
    connection's key, and hands back what the model writes as it writes it.
-   The page never sees the key and never talks to a provider itself. */
+   The page is never given the key and never talks to a provider itself. A
+   reply that repeats the key has it cut out on the way; what that does and
+   does not catch is written on the sieve in chat.rs. */
 
 /**
  * The connection whose model answers for an agent: the one chosen for it, or
@@ -67,9 +69,15 @@ export interface Reply {
 
 type Piece = { kind: "thinking" | "text"; text: string } | { kind: "end"; failure?: Failure };
 
-/** How long the last piece may take to arrive once the call itself has been
-    answered. One that has not come by then never will. */
+/** How long the pieces still on their way may go without one arriving, once
+    the call itself has been answered, before the reply is given up on. */
 const stragglers = 5_000;
+
+/** What Tauri puts in the page for talking to the Rust side. The one part
+    used here has no public name: it forgets a channel's callback. */
+function internals(): { unregisterCallback?: (id: number) => void } | undefined {
+  return (window as { __TAURI_INTERNALS__?: { unregisterCallback?: (id: number) => void } }).__TAURI_INTERNALS__;
+}
 
 /**
  * Asks a connection's model to answer a conversation. `onProgress` is given
@@ -87,21 +95,43 @@ export function ask(
   let thinking = "";
   let frame = 0;
   let over = false;
-  let end = (_failure?: unknown) => {};
+  let waiting: ReturnType<typeof setTimeout> | undefined;
+  let settle = { resolve() {}, reject(_failure: unknown) {} };
   const done = new Promise<void>((resolve, reject) => {
-    end = (failure) => {
-      if (over) return;
-      over = true;
-      cancelAnimationFrame(frame);
-      onProgress(text, thinking);
-      if (failure === undefined) resolve();
-      else reject(failure);
-    };
+    settle = { resolve, reject };
   });
+
+  /** Ends the reply, once. `abandoned` when pieces may still be owed that
+      will never come: Tauri lets go of a channel when everything sent on it
+      has arrived, and one with a piece missing would be kept for ever, with
+      all it holds. */
+  function end(failure?: unknown, abandoned = false) {
+    if (over) return;
+    over = true;
+    cancelAnimationFrame(frame);
+    clearTimeout(waiting);
+    if (abandoned) internals()?.unregisterCallback?.(pieces.id);
+    onProgress(text, thinking);
+    if (failure === undefined) settle.resolve();
+    else settle.reject(failure);
+  }
+
+  /** Waits a while longer for the pieces still on their way. Each one that
+      arrives earns the rest more time, and a page that is hidden is not
+      held to it: the desktop may have slowed it down. */
+  function wait() {
+    clearTimeout(waiting);
+    waiting = setTimeout(() => {
+      if (document.hidden) wait();
+      else end({ kind: "interrupted" }, true);
+    }, stragglers);
+  }
+
   // How the reply ended arrives here too, as the last piece: an answer to
   // the call itself could overtake the pieces before it.
   const pieces = new Channel<Piece>((piece) => {
     if (over) return;
+    if (waiting !== undefined) wait();
     if (piece.kind === "end") return end(piece.failure);
     if (piece.kind === "thinking") thinking += piece.text;
     else text += piece.text;
@@ -119,10 +149,10 @@ export function ask(
     needsKey: presetOf(connection.preset).key === "needed",
     pieces,
   }).then(
-    // The call is answered once the last piece has been sent. A piece lost
-    // on the way would leave that one waiting behind the gap for ever.
-    () => setTimeout(() => end({ kind: "interrupted" }), stragglers),
-    (error) => end(error ?? {}),
+    // The call is answered once the last piece has been sent. If one was
+    // lost on the way, the last waits behind the gap and never arrives.
+    wait,
+    (error) => end(error ?? {}, true),
   );
   return {
     done,

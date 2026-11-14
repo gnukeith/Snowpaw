@@ -116,6 +116,9 @@ impl Replies {
     fn stop(&self, request: &str) {
         let mut places = self.lock();
         let Some(halt) = places.writing.get(request).cloned() else {
+            if places.stopped.iter().any(|name| name == request) {
+                return;
+            }
             if places.stopped.len() == EARLY_STOPS {
                 places.stopped.pop_front();
             }
@@ -276,8 +279,9 @@ fn next_line(stream: &mut impl BufRead, line: &mut Vec<u8>) -> Result<u64, Failu
     Ok(read as u64)
 }
 
-/// Keeps the connection's key out of what a reply says. A server may repeat
-/// the key it was sent, and a key never goes to the page. Text passes through
+/// Cuts the connection's key out of what a reply says, should the server
+/// repeat the key it was sent: the page is given no key by the app, and
+/// should not be handed one by a reply either. Text passes through
 /// as it arrives, less any ending that could be the start of the key: that
 /// waits for what follows it. Where the key was, a line break is left, which
 /// no key can contain, so that what came before and after cannot join into
@@ -406,9 +410,9 @@ fn read(
         }
     };
     // Whatever was held back in case it began a key did not.
-    tell(emit, Piece::Thinking { text: thinking.rest() });
-    tell(emit, Piece::Text { text: text.rest() });
-    outcome
+    let taken = tell(emit, Piece::Thinking { text: thinking.rest() })
+        && tell(emit, Piece::Text { text: text.rest() });
+    if taken { outcome } else { Err(Failure::new("unheard")) }
 }
 
 #[cfg(test)]
@@ -534,6 +538,17 @@ mod tests {
         assert_eq!((pieces, outcome), (vec![text("a")], Err(Failure::new("stopped"))));
         let outcome = read(Cursor::new(&stream), None, &AtomicBool::new(false), &mut |_| false);
         assert_eq!(outcome, Err(Failure::new("unheard")));
+        // What was held back until the end is a piece like any other: with
+        // the key "ab", an "a" waits to see what follows it.
+        for held in [json!({"content": "a"}), json!({"reasoning": "a"})] {
+            let stream = [chunk(held), "data: [DONE]\n\n".into()].concat();
+            let mut asked = 0;
+            let outcome = read(Cursor::new(&stream), Some("ab"), &AtomicBool::new(false), &mut |_| {
+                asked += 1;
+                false
+            });
+            assert_eq!((asked, outcome), (1, Err(Failure::new("unheard"))));
+        }
 
         struct Broken;
         impl Read for Broken {
@@ -760,8 +775,12 @@ mod tests {
         let replies = Replies::default();
         replies.stop("early");
         assert_eq!(replies.begin("early").err(), Some(Failure::new("stopped")));
-        // Once: the name is then as free as any other.
+        // Once: the name is then as free as any other, however often it was stopped.
         assert!(replies.begin("early").is_ok());
+        replies.stop("twice");
+        replies.stop("twice");
+        assert!(replies.begin("twice").is_err());
+        assert!(replies.begin("twice").is_ok());
         // Only so many are remembered, the newest ones.
         for name in 0..EARLY_STOPS + 1 {
             replies.stop(&name.to_string());
