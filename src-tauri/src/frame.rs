@@ -4,6 +4,8 @@
 //! page instead, through the commands at the bottom.
 
 use gtk::prelude::*;
+use std::cell::Cell;
+use std::time::Duration;
 use tauri::{State, WebviewWindow, Window};
 
 /// Marks the app's own window, so that what is done to its frame is not also
@@ -48,10 +50,16 @@ fn remove_title_bar(window: &WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
+/// The least time between two repaints of the window's colour.
+const TINT_INTERVAL: Duration = Duration::from_millis(50);
+
 thread_local! {
     /// The one stylesheet the app gives the toolkit. It lives on the main
     /// thread, where the window is made and where these commands run.
     static STYLE: gtk::CssProvider = gtk::CssProvider::new();
+    /// The colour the window is painted in, and one that is waiting its turn.
+    static TINT: Cell<Option<[u8; 3]>> = const { Cell::new(None) };
+    static NEXT_TINT: Cell<Option<[u8; 3]>> = const { Cell::new(None) };
 }
 
 /// Themes round the top corners of the frame to fit the title bar that used to
@@ -136,11 +144,32 @@ pub fn window_close(window: Window) {
 ///
 /// The one command that takes arguments: three bytes, which is all a colour
 /// is. Anything else is refused before it gets here.
+///
+/// Repainting means the toolkit reads the stylesheet again, so it is done for
+/// a new colour only, and no more often than `TINT_INTERVAL`: however fast
+/// the page asks, the latest colour is what gets painted next.
 #[tauri::command]
 pub fn window_tint(red: u8, green: u8, blue: u8) {
-    if let Err(error) = restyle(Some([red, green, blue])) {
-        eprintln!("window_tint: {error}");
+    let wanted = Some([red, green, blue]);
+    let waiting = NEXT_TINT.replace(wanted).is_some();
+    if waiting || wanted == TINT.get() {
+        // Either a repaint is on its way and will pick this colour up, or the
+        // window is this colour already.
+        if !waiting {
+            NEXT_TINT.set(None);
+        }
+        return;
     }
+    gtk::glib::timeout_add_local_once(TINT_INTERVAL, || {
+        let tint = NEXT_TINT.take();
+        if tint.is_none() || tint == TINT.get() {
+            return;
+        }
+        match restyle(tint) {
+            Ok(()) => TINT.set(tint),
+            Err(error) => eprintln!("window_tint: {error}"),
+        }
+    });
 }
 
 fn report(command: &str, done: tauri::Result<()>) {
