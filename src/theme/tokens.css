@@ -88,6 +88,11 @@
   /* Lines a change added and removed. */
   --added: color-mix(in oklch, var(--success) 16%, transparent);
   --removed: color-mix(in oklch, var(--danger) 16%, transparent);
+  /* The parts of a command. Its name takes the accent; these are the rest. */
+  --syntax-command: var(--accent);
+  --syntax-flag: light-dark(oklch(50% 0.15 310), oklch(78% 0.11 310));
+  --syntax-string: var(--success);
+  --syntax-variable: light-dark(oklch(52% 0.12 70), oklch(80% 0.12 80));
   /* Dims the app behind a dialog. */
   --scrim: color-mix(in oklch, black 45%, transparent);
   --hover: color-mix(in oklch, var(--text) 6%, transparent);

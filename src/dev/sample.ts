@@ -150,7 +150,7 @@ export function sample(): { agents: Agent[]; work: AllWork } {
             " Test Files  1 failed | 6 passed (7)",
             "      Tests  1 failed | 41 passed (42)",
           ].join("\n"),
-          "pnpm test",
+          'cd "$HOME/app" && pnpm test --run src/dates 2>&1 | tail -n 20',
         ),
         step(
           3,

@@ -42,13 +42,43 @@
   user-select: text;
 }
 
+/* The command that was run, as it would be typed: after a prompt, with
+   every line break and space kept, and each part in the colour of its kind. */
 .source {
   display: block;
   padding: var(--space-2) var(--space-3);
   border-bottom: var(--hairline) solid var(--border);
   font: inherit;
-  font-weight: var(--weight-strong);
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.source::before {
+  content: "$ ";
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.source [data-part="command"] {
+  color: var(--syntax-command);
+  font-weight: var(--weight-strong);
+}
+
+.source [data-part="flag"] {
+  color: var(--syntax-flag);
+}
+
+.source [data-part="string"] {
+  color: var(--syntax-string);
+}
+
+.source [data-part="variable"] {
+  color: var(--syntax-variable);
+}
+
+.source [data-part="operator"],
+.source [data-part="comment"] {
+  color: var(--text-muted);
 }
 
 .text {
