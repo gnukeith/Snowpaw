@@ -13,17 +13,19 @@
 //! filter stays on as a second layer.
 //!
 //! How a machine is kept from outliving the app. The first process in the
-//! sandbox is not QEMU but the keeper (keeper/main.rs), which starts QEMU
-//! and exits when its connection to the app ends. Linux ends every process
-//! in the sandbox when that first process exits, and does not let the
-//! others kill or stop it. So the machine ends when the app closes the
-//! connection, and when the app dies in any way, with nothing to arrange
-//! in advance that could be missed.
+//! sandbox is not QEMU but the keeper (keeper/main.rs). It starts QEMU only
+//! when the app tells it to, and exits when the app closes their
+//! connection or the app's process ends. Linux ends every process in the
+//! sandbox when that first process exits, and does not let the others kill
+//! or stop it. Nothing has to be arranged in advance that the app's death
+//! could come before. The machine is gone shortly after the app, not at the
+//! same instant: Linux has to notice and finish the processes off.
 //!
 //! How the app knows a machine is gone. It holds a handle on the keeper
 //! (a pidfd, taken from the connection itself). Linux reports the first
 //! process of a sandbox as ended only once every other process in it has
-//! ended, so that handle is the proof.
+//! ended, so that handle is the proof. Asking a machine to end and having
+//! that proof are different things, and the code keeps them apart.
 
 use crate::qmp::Qmp;
 use serde_json::json;
@@ -82,7 +84,7 @@ pub struct Vm {
 }
 
 /// A machine whose sandbox has been started but which has not connected to
-/// the app yet. No guest runs before it has. Dropping it ends the sandbox.
+/// the app yet. No guest runs before it has, so dropping it leaves no guest.
 pub struct Spawned {
     // Fields are dropped in this order, and it matters: the socket has to
     // close before the sandbox is waited for (see `Process::kill`).
@@ -97,8 +99,8 @@ struct Screen {
 }
 
 /// The sandbox with the keeper and QEMU in it, and its private directory.
-/// Dropping it ends the sandbox, and removes the directory once the sandbox
-/// is proven gone.
+/// Dropping it asks the sandbox to end, and removes the directory if no
+/// guest can be running any more.
 struct Process {
     /// bubblewrap, which exits once the sandbox is empty.
     child: Mutex<Child>,
@@ -117,8 +119,9 @@ struct Hold {
 }
 
 impl Process {
-    /// Ends everything in the sandbox and waits for it to be gone. Safe to
-    /// call more than once. False if that could not be proven in time.
+    /// Ends everything in the sandbox. Safe to call more than once. False if
+    /// a guest may still be running: it was told to end, but that was not
+    /// seen to happen in time.
     fn kill(&self) -> bool {
         let mut child = lock(&self.child);
         let gone = match &self.hold {
@@ -131,19 +134,17 @@ impl Process {
                 readable(&hold.keeper, TEARDOWN_TIMEOUT)
             }
             None => {
-                // The keeper was never told to go, so no QEMU was started.
-                // Only a `Spawned` gets here, and its socket is closed by
-                // now, so a keeper that exists or is still to come gives up
-                // by itself. bubblewrap exits once its sandbox is empty, or
-                // was never made: wait for it to do that of its own accord.
+                // The keeper was never told to go, so no guest has run. Only
+                // a `Spawned` gets here, and its socket is closed by now, so
+                // none can: a keeper that exists or is still to come gives
+                // up by itself. Give bubblewrap the time to see that through
+                // before it is killed below. Whether it does is not proof
+                // that the sandbox is empty, and is not taken for one.
                 let deadline = Instant::now() + TEARDOWN_TIMEOUT;
-                loop {
-                    match child.try_wait() {
-                        Ok(Some(status)) => break status.code().is_some(),
-                        Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
-                        _ => break false,
-                    }
+                while matches!(child.try_wait(), Ok(None)) && Instant::now() < deadline {
+                    thread::sleep(Duration::from_millis(10));
                 }
+                true
             }
         };
         // bubblewrap has nothing left to do. Killed first, so the wait is short.
@@ -238,8 +239,17 @@ impl Spawned {
         lifeline.write_all(b"g")?;
         self.process.hold = Some(Hold { _lifeline: lifeline, keeper });
         // Then QEMU, with the connection it is controlled through.
-        let qmp = Qmp::connect(self.accept(deadline)?, CONTROL_TIMEOUT)?;
-        Ok(Vm { process: self.process, screen: Mutex::new(Screen { qmp, frames: 0, last_frame: None }) })
+        match self.accept(deadline).and_then(|stream| Qmp::connect(stream, CONTROL_TIMEOUT)) {
+            Ok(qmp) => Ok(Vm { process: self.process, screen: Mutex::new(Screen { qmp, frames: 0, last_frame: None }) }),
+            Err(error) => {
+                // A guest may be running by now. This start does not end, and
+                // so nothing else can start, until that guest is seen gone.
+                while !self.process.kill() {
+                    eprintln!("vm: still waiting for a machine that failed to start to end");
+                }
+                Err(error)
+            }
+        }
     }
 
     fn accept(&self, deadline: Instant) -> io::Result<UnixStream> {
@@ -405,7 +415,7 @@ fn session_dir() -> io::Result<PathBuf> {
 /// is killed cannot clean up, and the directory may still hold a captured screen.
 ///
 /// Deletes only what this module creates: a directory with a session's exact
-/// name, and inside it only the control socket and frame files. A directory
+/// name, and inside it only the control socket, the keeper and frame files. A directory
 /// that holds anything else is left where it is.
 fn remove_stale_sessions(root: &Path) {
     for entry in fs::read_dir(root).into_iter().flatten().flatten() {
@@ -735,6 +745,8 @@ mod tests {
         let held: Vec<_> = fs::read_dir(format!("/proc/{qemu}/fd")).unwrap().map(|fd| fs::read_link(fd.unwrap().path()).unwrap()).collect();
         assert!(held.len() > 3, "QEMU's own descriptors are listed: {held:?}");
         assert!(!held.contains(&secret), "the app's open file did not reach QEMU");
+        // The keeper holds a handle on the app. QEMU must not: it could kill through it.
+        assert!(!held.iter().any(|open| open.to_string_lossy().contains("pidfd")), "{held:?}");
 
         let mut screen = lock(&vm.screen);
         let mut dump = |path: &Path| screen.qmp.execute("screendump", json!({ "filename": path, "format": "png" }));
@@ -782,6 +794,58 @@ mod tests {
         assert!(!Path::new(&format!("/proc/{}", pids[1])).exists(), "QEMU is gone");
     }
 
+    /// Runs the keeper outside any sandbox, with a stand-in for the app that
+    /// dies while a child of its own still holds every descriptor it had.
+    /// The connection therefore stays open, and only the app's death is left
+    /// to end the machine.
+    #[test]
+    fn the_machine_ends_when_the_app_dies_even_if_its_connection_stays_open() {
+        let scratch = Scratch::new("death");
+        let (keeper, socket) = (scratch.0.join("keeper"), scratch.0.join("socket"));
+        fs::write(&keeper, KEEPER).unwrap();
+        fs::set_permissions(&keeper, std::os::unix::fs::PermissionsExt::from_mode(0o500)).unwrap();
+        let stand_in = "import os, socket, sys, time
+listener = socket.socket(socket.AF_UNIX)
+listener.bind(sys.argv[1])
+listener.listen(1)
+print('listening', flush=True)
+connection, _ = listener.accept()
+connection.send(b'g')
+time.sleep(0.5)
+holder = os.fork()
+if holder == 0:
+    time.sleep(60)
+    os._exit(0)
+print(holder, flush=True)
+os._exit(0)";
+        let Ok(mut app) = Command::new("python3").args(["-c", stand_in]).arg(&socket).stdout(Stdio::piped()).spawn() else {
+            eprintln!("skipped: needs python3");
+            return;
+        };
+        let mut said = io::BufReader::new(app.stdout.take().unwrap());
+        let mut line = String::new();
+        io::BufRead::read_line(&mut said, &mut line).unwrap();
+        assert_eq!(line, "listening\n");
+
+        // The machine is a `cat` that runs until this test lets go of its input.
+        let mut machine = Command::new(&keeper).arg(&socket).arg("/usr/bin/cat").stdin(Stdio::piped()).spawn().unwrap();
+        line.clear();
+        io::BufRead::read_line(&mut said, &mut line).unwrap();
+        let holder: libc::pid_t = line.trim().parse().unwrap();
+        app.wait().unwrap();
+        assert!(Path::new(&format!("/proc/{holder}")).exists(), "the child that holds the connection lives on");
+
+        let deadline = Instant::now() + TEARDOWN_TIMEOUT;
+        while matches!(machine.try_wait(), Ok(None)) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let ended = machine.try_wait().unwrap();
+        // Safety: a signal to a process this test started.
+        unsafe { libc::kill(holder, libc::SIGKILL) };
+        let _ = machine.kill();
+        assert_eq!(ended.and_then(|status| status.code()), Some(0), "the keeper ended on the app's death");
+    }
+
     /// Runs the real sandbox. Nothing is killed here either, and no QEMU is
     /// ever started: the keeper's exit status says how far it got.
     #[test]
@@ -795,15 +859,15 @@ mod tests {
         // (103), or connects just in time and is never told to go (104).
         let Spawned { control, process } = Vm::spawn(None).unwrap();
         drop(control);
-        assert!(process.kill(), "bubblewrap ended of its own accord");
-        assert!(matches!(status(&process), Some(103 | 104)), "{:?}", status(&process));
+        assert!(process.kill());
+        assert!(matches!(status(&process), Some(103 | 104)), "bubblewrap ended of its own accord: {:?}", status(&process));
 
         // The app goes after the keeper has connected, before telling it to go.
         let Spawned { control, process } = Vm::spawn(None).unwrap();
         assert!(readable(&control, START_TIMEOUT), "the keeper is waiting");
         drop(control);
-        assert!(process.kill(), "bubblewrap ended of its own accord");
-        assert_eq!(status(&process), Some(104), "the keeper was never told to go");
+        assert!(process.kill());
+        assert_eq!(status(&process), Some(104), "the keeper was never told to go, and bubblewrap ended of its own accord");
     }
 
     /// Runs the real QEMU.

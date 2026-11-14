@@ -6,6 +6,7 @@ mod vm;
 
 use std::fs::File;
 use std::io;
+use std::panic;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager, RunEvent, State};
@@ -15,7 +16,7 @@ use vm::Vm;
 const BOOT_DISC: &str = "images/Fedora-Workstation-Live-45-1.4.x86_64.iso";
 
 /// The one virtual machine the app can run. The lock is held only for a
-/// moment, never while waiting for a machine, so stopping is always possible.
+/// moment, never while waiting for a machine.
 #[derive(Default)]
 struct Computer {
     slot: Mutex<Slot>,
@@ -156,7 +157,10 @@ fn vm_start(app: AppHandle, computer: State<'_, Computer>) -> Result<(), &'stati
     let Some(ticket) = computer.begin_start()? else {
         return Ok(());
     };
-    computer.finish_start(ticket, Vm::spawn(Some(&disc)).and_then(vm::Spawned::connect))
+    // A panic in here must still settle the start, or every later stop
+    // would wait for it for ever.
+    let started = panic::catch_unwind(|| Vm::spawn(Some(&disc)).and_then(vm::Spawned::connect));
+    computer.finish_start(ticket, started.unwrap_or_else(|_| Err(io::Error::other("the start panicked"))))
 }
 
 #[tauri::command(async)]

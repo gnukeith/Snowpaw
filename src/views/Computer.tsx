@@ -45,8 +45,9 @@ export function Computer() {
             png = await invoke<ArrayBuffer>("vm_frame");
           } catch (reason) {
             // The Rust side ends a machine whose screen it cannot read. Ask
-            // whether it managed to, so that Stop stays on screen if not.
-            const running = await invoke<boolean>("vm_status").catch(() => false);
+            // whether it managed to, so that Stop stays on screen if not, or
+            // if there is no telling.
+            const running = await invoke<boolean>("vm_status").catch(() => true);
             if (live) {
               setError(String(reason));
               if (!running) setPower("off");
@@ -92,6 +93,10 @@ export function Computer() {
       setPower(on ? "on" : "off");
     } catch (reason) {
       setError(String(reason));
+      // A start or stop that failed can still leave a machine running. Ask,
+      // and if there is no telling, leave the screen as it is.
+      const running = await invoke<boolean>("vm_status").catch(() => null);
+      if (running !== null) setPower(running ? "on" : "off");
     } finally {
       setBusy(false);
     }
