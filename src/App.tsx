@@ -297,7 +297,7 @@ export function App() {
             connections={connections}
             onConnectionsChange={setConnections}
             onDone={(makeAgent) => {
-              saveSetupDone();
+              wrote("setup", saveSetupDone());
               setSetupOpen(false);
               if (makeAgent) setEditing("new");
             }}
