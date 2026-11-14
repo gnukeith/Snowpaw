@@ -10,7 +10,7 @@ const marks = { add: "+", remove: "−", context: "" };
 export function Changes({ agent, diff }: { agent: Agent; diff: string }) {
   const { files, truncated } = useMemo(() => parseDiff(diff), [diff]);
 
-  if (files.length === 0) {
+  if (files.length === 0 && !truncated) {
     return (
       <Empty
         title="No changes"
@@ -22,7 +22,8 @@ export function Changes({ agent, diff }: { agent: Agent; diff: string }) {
     <div className={styles.changes}>
       {truncated && (
         <p className={styles.notice}>
-          These changes are too large to show in full. This is the start of them.
+          These changes are too large to show in full.
+          {files.length > 0 && " This is the start of them."}
         </p>
       )}
       {files.map((file, index) => (

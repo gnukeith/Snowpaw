@@ -104,6 +104,28 @@ diff --git a/my file.txt b/my file.txt
   ]);
 });
 
+test("every escape git writes in a path is undone", () => {
+  const [file] = read(String.raw`--- "a/\a\b\f\n\r\t\v\\\".txt"
++++ "b/\a\b\f\n\r\t\v\\\".txt"
+@@ -1 +1 @@
+-a
++b
+`);
+  assert.equal(file.path, '\x07\b\f\n\r\t\v\\".txt');
+});
+
+test("a quoted path with ' b/' inside it is taken whole", () => {
+  const [file] = read(String.raw`diff --git "a/dir b/tab\t.png" "b/dir b/tab\t.png"
+Binary files differ
+`);
+  assert.equal(file.path, "dir b/tab\t.png");
+});
+
+test("a path that is not valid text is kept as written, without throwing", () => {
+  const [file] = read('--- "a/\ud800"\n+++ "b/\ud800"\n@@ -1 +1 @@\n-a\n+b\n');
+  assert.equal(file.path, '"b/\ud800"');
+});
+
 test("quoting that cannot be undone leaves the path as written", () => {
   const [file] = read(String.raw`--- "a/bad\377.txt"
 +++ "b/bad\377.txt"
@@ -218,4 +240,15 @@ test("a diff exactly at the limits is read whole", () => {
   const { files, truncated } = parseDiff(`--- a\n+++ a\n@@ -0,0 +1,${maxDiffRows - 2} @@\n${"+x\n".repeat(maxDiffRows - 2)}`);
   assert.equal(truncated, false);
   assert.equal(files[0].added, maxDiffRows - 2);
+});
+
+test("at the row limit, only what would have been a row counts as cut off", () => {
+  const lines = maxDiffRows - 2;
+  /** A file and a hunk that say `promised` lines follow, with `lines` of them, filling every row. */
+  const full = (promised) => `--- a\n+++ a\n@@ -1,${promised} +1,${promised} @@\n${" x\n".repeat(lines)}`;
+  // A note is not a row, so nothing was left out.
+  assert.equal(parseDiff(`${full(lines)}\\ No newline at end of file\n`).truncated, false);
+  // Empty lines the hunk still had coming are rows, and were left out.
+  assert.equal(parseDiff(`${full(lines + 2)}\n\n`).truncated, true);
+  assert.equal(parseDiff(`${full(lines)}diff --git a/b b/b\n`).truncated, true);
 });
