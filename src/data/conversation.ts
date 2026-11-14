@@ -24,9 +24,11 @@ export interface Step {
 export interface Work {
   messages: Message[];
   steps: Step[];
+  /** Every change the agent made to files, as one unified diff. */
+  diff: string;
 }
 
-export const noWork: Work = { messages: [], steps: [] };
+export const noWork: Work = { messages: [], steps: [], diff: "" };
 
 /** Each agent's work, by the agent's id. */
 export type AllWork = Record<string, Work>;

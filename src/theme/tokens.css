@@ -69,11 +69,15 @@
   --text-muted: light-dark(oklch(52% 0.02 var(--hue)), oklch(70% 0.015 var(--hue)));
   --accent: light-dark(oklch(56% 0.17 var(--hue)), oklch(74% 0.13 var(--hue)));
   --danger: light-dark(oklch(52% 0.19 25), oklch(74% 0.15 25));
+  --success: light-dark(oklch(50% 0.15 150), oklch(78% 0.15 150));
   --on-accent: light-dark(oklch(99% 0.005 var(--hue)), oklch(18% 0.02 var(--hue)));
   /* Messages. Yours are the inverse of the surface; an agent's sit just above it. */
   --bubble: color-mix(in oklch, var(--text) 8%, var(--surface));
   --bubble-user: var(--text);
   --on-bubble-user: var(--surface);
+  /* Lines a change added and removed. */
+  --added: color-mix(in oklch, var(--success) 16%, transparent);
+  --removed: color-mix(in oklch, var(--danger) 16%, transparent);
   /* Dims the app behind a dialog. */
   --scrim: color-mix(in oklch, black 45%, transparent);
   --hover: color-mix(in oklch, var(--text) 6%, transparent);

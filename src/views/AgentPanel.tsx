@@ -4,6 +4,7 @@ import { Segmented } from "../components/Segmented";
 import type { Agent } from "../data/agents";
 import type { Work } from "../data/conversation";
 import { Activity } from "./Activity";
+import { Changes } from "./Changes";
 import styles from "./AgentPanel.module.css";
 import { Computer } from "./Computer";
 
@@ -14,7 +15,7 @@ interface Props {
 }
 
 /* To add a tab, add its name here and its view below. */
-const tabs = ["computer", "activity"] as const;
+const tabs = ["computer", "activity", "changes"] as const;
 
 /** What an agent is doing, beside its conversation. */
 export function AgentPanel({ agent, work, onClose }: Props) {
@@ -52,6 +53,7 @@ export function AgentPanel({ agent, work, onClose }: Props) {
         <div className={styles.body}>
           {tab === "computer" && <Computer />}
           {tab === "activity" && <Activity agent={agent} steps={work.steps} />}
+          {tab === "changes" && <Changes agent={agent} diff={work.diff} />}
         </div>
       </div>
     </aside>

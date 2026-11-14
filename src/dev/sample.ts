@@ -10,6 +10,40 @@ export function isSample(agent: Agent): boolean {
   return agent.id.startsWith(prefix);
 }
 
+const diff = `diff --git a/src/dates/parse.ts b/src/dates/parse.ts
+index 3c1f9aa..8d27b40 100644
+--- a/src/dates/parse.ts
++++ b/src/dates/parse.ts
+@@ -12,6 +12,7 @@ import { normalize } from "./normalize";
+ export function parseDate(text: string): Date | null {
+   const ms = Date.parse(normalize(text));
+-  if (!(ms > 0)) return null;
++  // Dates before 1970 are negative numbers, and they are real dates.
++  if (Number.isNaN(ms)) return null;
+   return new Date(ms);
+ }
+
+diff --git a/src/dates/parse.test.ts b/src/dates/parse.test.ts
+index 77e0c12..b9a4f03 100644
+--- a/src/dates/parse.test.ts
++++ b/src/dates/parse.test.ts
+@@ -31,2 +31,6 @@ test("parses dates before 1970", () => {
+   expect(parseDate("1969-07-20")).toEqual(new Date("1969-07-20T00:00:00.000Z"));
+ });
++
++test("still rejects text that is not a date", () => {
++  expect(parseDate("the day after tomorrow, give or take")).toBeNull();
++});
+diff --git a/docs/dates.md b/docs/dates.md
+new file mode 100644
+--- /dev/null
++++ b/docs/dates.md
+@@ -0,0 +1,3 @@
++# Dates
++
++Any date JavaScript can represent is accepted, including dates before 1970.
+`;
+
 const minute = 60 * 1000;
 const hour = 60 * minute;
 
@@ -105,6 +139,7 @@ export function sample(): { agents: Agent[]; work: AllWork } {
           "pnpm test",
         ),
       ],
+      diff,
     },
     [marketing.id]: {
       ...noWork,

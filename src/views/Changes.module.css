@@ -1,0 +1,106 @@
+.changes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 100%;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.file {
+  flex: none;
+  overflow: hidden;
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  font: var(--text-sm) / var(--leading) var(--font-mono);
+}
+
+.summary:hover {
+  background: var(--hover);
+}
+
+.path {
+  flex: 1;
+  font-weight: var(--weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.added {
+  color: var(--success);
+}
+
+.removed {
+  color: var(--danger);
+}
+
+.note {
+  padding: var(--space-2) var(--space-3);
+  border-top: var(--hairline) solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* One grid for the whole file, so the two columns of line numbers line up
+   from hunk to hunk, and a long line scrolls every row with it. */
+.lines {
+  display: grid;
+  grid-template-columns: auto auto auto minmax(max-content, 1fr);
+  overflow-x: auto;
+  border-top: var(--hairline) solid var(--border);
+  background: var(--bg);
+  font: var(--text-sm) / var(--leading) var(--font-mono);
+}
+
+.hunk,
+.context {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+
+.header {
+  grid-column: 1 / -1;
+  padding: var(--space-1) var(--space-3);
+  background: var(--hover);
+  color: var(--text-muted);
+  white-space: pre;
+}
+
+.add {
+  composes: context;
+  background: var(--added);
+}
+
+.remove {
+  composes: context;
+  background: var(--removed);
+}
+
+/* Numbers and marks are not part of the code, so selecting skips them. */
+.number,
+.mark {
+  color: var(--text-muted);
+  text-align: end;
+}
+
+.number {
+  padding-inline-start: var(--space-3);
+}
+
+.mark {
+  padding: 0 var(--space-2);
+}
+
+.code {
+  padding-inline-end: var(--space-3);
+  cursor: text;
+  white-space: pre;
+  user-select: text;
+}
