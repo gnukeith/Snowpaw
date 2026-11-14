@@ -19,22 +19,25 @@ export function Avatar({ agent, size }: Props) {
   useEffect(() => {
     if (!picture) return;
     let live = true;
-    // `atob` throws on text that is not base64, so decoding starts inside the chain.
+    // Inside the chain, so that everything that can go wrong on the way to a
+    // drawn picture, from text that is not base64 to a canvas that will not
+    // take it, ends in the paw instead.
     Promise.resolve(picture)
       .then(decodePicture)
-      .then(
-        (image) => {
-          // By now the avatar may be showing another picture, or be gone. Only
-          // the picture that is still wanted is drawn.
+      .then((image) => {
+        try {
+          // By now the avatar may be showing another picture, or be gone.
+          // Only the picture that is still wanted is drawn.
           if (live && canvas.current) {
             canvas.current.width = image.width;
             canvas.current.height = image.height;
             canvas.current.getContext("2d")?.drawImage(image, 0, 0);
           }
+        } finally {
           image.close();
-        },
-        () => live && setBroken(picture),
-      );
+        }
+      })
+      .catch(() => live && setBroken(picture));
     return () => {
       live = false;
     };
