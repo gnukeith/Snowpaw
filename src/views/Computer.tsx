@@ -5,7 +5,7 @@ import styles from "./Computer.module.css";
 
 /** Time between screen captures. The Rust side enforces its own minimum too. */
 const frameInterval = 500;
-/** Time between looks at a start that this view is not itself waiting for. */
+/** Time between looks at whether the machine is off, starting or on. */
 const statusInterval = 1000;
 
 /**
@@ -39,22 +39,20 @@ export function Computer() {
     if (mine === latest.current) setPower(now);
   }
 
+  // The machine can change without this view doing anything: a start asked
+  // for before the view was opened, a machine that ends by itself. So no
+  // answer is taken as settled: the view keeps looking, except while it is
+  // itself waiting for a start, a stop or a check to finish.
   useEffect(() => {
+    if (busy) return;
     look();
+    const timer = setInterval(look, statusInterval);
     return () => {
-      // Whatever is still on its way is for a view that is gone.
+      clearInterval(timer);
+      // Whatever is still on its way is out of date, or for a view that is gone.
       latest.current++;
     };
-  }, []);
-
-  // A start that this view is not waiting for itself (it was begun before the
-  // view was opened, or it failed and its machine is still being ended) is
-  // looked at again until it has settled.
-  useEffect(() => {
-    if (power !== "starting" || busy) return;
-    const timer = setInterval(look, statusInterval);
-    return () => clearInterval(timer);
-  }, [power, busy]);
+  }, [busy]);
 
   // While the machine is on, ask for one frame at a time and paint it. The
   // next request goes out only after the last frame is on screen, so frames
