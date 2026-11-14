@@ -97,8 +97,9 @@ impl Computer {
     }
 }
 
-// The commands below are the whole surface the webview gets. None takes an
-// argument: paths, QEMU options and control messages are all decided in Rust.
+// The commands below, with those in `frame`, are the whole surface the webview
+// gets. None here takes an argument: paths, QEMU options and control messages
+// are all decided in Rust. The one in `frame` that does takes a colour.
 // Details of a failure go to the log, and the webview gets a fixed sentence.
 
 #[tauri::command(async)]
@@ -178,7 +179,8 @@ fn main() {
             frame::window_drag,
             frame::window_minimize,
             frame::window_toggle_maximize,
-            frame::window_close
+            frame::window_close,
+            frame::window_tint
         ])
         .build(tauri::generate_context!())
         .expect("failed to start Snowpaw")

@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+
 export const modes = ["system", "light", "dark"] as const;
 export type Mode = (typeof modes)[number];
 
@@ -37,4 +39,23 @@ export function applyTheme(theme: Theme) {
   if (theme.mode === "system") delete root.dataset.theme;
   else root.dataset.theme = theme.mode;
   root.style.setProperty("--hue", String(theme.hue));
+}
+
+/**
+ * Tells the window what colour the page's background is, so that it can paint
+ * itself the same behind the page. A window that grows faster than the page
+ * can be redrawn shows through for a moment, and should not show another colour.
+ */
+export function tintWindow() {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  // Drawn and read back: the colour is written in a form only the page
+  // understands, and the window wants plain red, green and blue.
+  context.fillStyle = getComputedStyle(document.body).backgroundColor;
+  context.fillRect(0, 0, 1, 1);
+  const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+  // Without the app around it, as in a browser, there is no window to tell.
+  invoke("window_tint", { red, green, blue }).catch(() => {});
 }

@@ -15,6 +15,7 @@ fn main() {
         "window_minimize",
         "window_toggle_maximize",
         "window_close",
+        "window_tint",
     ]);
     tauri_build::try_build(Attributes::new().app_manifest(commands)).expect("failed to run tauri-build");
 }

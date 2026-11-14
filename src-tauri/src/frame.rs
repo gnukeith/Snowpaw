@@ -48,6 +48,12 @@ fn remove_title_bar(window: &WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
+thread_local! {
+    /// The one stylesheet the app gives the toolkit. It lives on the main
+    /// thread, where the window is made and where these commands run.
+    static STYLE: gtk::CssProvider = gtk::CssProvider::new();
+}
+
 /// Themes round the top corners of the frame to fit the title bar that used to
 /// sit there. The page under it is a plain rectangle, so the frame's outline
 /// curved away behind the page's top corners and showed as a line with notched
@@ -55,22 +61,33 @@ fn remove_title_bar(window: &WebviewWindow) -> Result<(), String> {
 /// look alike. If this fails the window still works, with the notches.
 fn square_the_frame(window: &gtk::ApplicationWindow) {
     window.style_context().add_class(BARE_CLASS);
-    let style = gtk::CssProvider::new();
-    let rule = format!(".{BARE_CLASS} decoration {{ border-radius: 0; }}");
-    let loaded = style.load_from_data(rule.as_bytes());
-    match (loaded, gtk::prelude::GtkWindowExt::screen(window)) {
-        (Ok(()), Some(screen)) => gtk::StyleContext::add_provider_for_screen(
-            &screen,
-            &style,
-            gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
-        ),
+    match (restyle(None), gtk::prelude::GtkWindowExt::screen(window)) {
+        (Ok(()), Some(screen)) => STYLE.with(|style| {
+            gtk::StyleContext::add_provider_for_screen(
+                &screen,
+                style,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        }),
         (Err(error), _) => eprintln!("frame: the frame keeps its round corners: {error}"),
         (_, None) => eprintln!("frame: the frame keeps its round corners: no screen"),
     }
 }
 
-// Like every command the webview gets, these take no argument. Each acts on
-// the window that asked and on no other.
+/// Writes the stylesheet afresh: the square frame, and the colour behind the
+/// page once the page has said what its own is.
+fn restyle(tint: Option<[u8; 3]>) -> Result<(), gtk::glib::Error> {
+    let mut rules = format!(".{BARE_CLASS} decoration {{ border-radius: 0; }}");
+    if let Some([red, green, blue]) = tint {
+        rules.push_str(&format!(
+            " .{BARE_CLASS} {{ background-color: rgb({red}, {green}, {blue}); }}"
+        ));
+    }
+    STYLE.with(|style| style.load_from_data(rules.as_bytes()))
+}
+
+// Each of these acts on the window that asked and on no other. All but the
+// last take no argument.
 
 /// The buttons the desktop puts on a window and the side each goes on, as GTK
 /// writes it: `icon:minimize,maximize,close`. `None` while the desktop still
@@ -111,6 +128,19 @@ pub fn window_toggle_maximize(window: Window) {
 #[tauri::command]
 pub fn window_close(window: Window) {
     report("window_close", window.close());
+}
+
+/// Paints the window, behind the page, in the page's own background colour.
+/// The window shows through for a moment whenever it grows faster than the
+/// page can be redrawn, and in the toolkit's grey that looked like a fault.
+///
+/// The one command that takes arguments: three bytes, which is all a colour
+/// is. Anything else is refused before it gets here.
+#[tauri::command]
+pub fn window_tint(red: u8, green: u8, blue: u8) {
+    if let Err(error) = restyle(Some([red, green, blue])) {
+        eprintln!("window_tint: {error}");
+    }
 }
 
 fn report(command: &str, done: tauri::Result<()>) {

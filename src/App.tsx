@@ -23,7 +23,7 @@ import {
 } from "./data/conversation";
 import { parseButtonLayout, type ButtonLayout } from "./data/frame";
 import { loadName, loadPicture, saveName, savePicture } from "./data/profile";
-import { applyTheme, loadTheme, saveTheme } from "./theme/theme";
+import { applyTheme, loadTheme, saveTheme, tintWindow } from "./theme/theme";
 import { AgentEditor } from "./views/AgentEditor";
 import { AgentPanel } from "./views/AgentPanel";
 import { Conversation } from "./views/Conversation";
@@ -55,6 +55,11 @@ export function App() {
   useEffect(() => {
     applyTheme(theme);
     saveTheme(theme);
+    tintWindow();
+    // "System" changes colour when the desktop does, with nothing set here.
+    const desktop = matchMedia("(prefers-color-scheme: dark)");
+    desktop.addEventListener("change", tintWindow);
+    return () => desktop.removeEventListener("change", tintWindow);
   }, [theme]);
 
   useEffect(() => {
