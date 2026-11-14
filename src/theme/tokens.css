@@ -34,6 +34,7 @@
   --sidebar-width: calc(var(--unit) * 60);
   --settings-nav-width: calc(var(--unit) * 50);
   --content-width: calc(var(--unit) * 160);
+  --prose-width: calc(var(--unit) * 100);
 
   /* Type. */
   --font: system-ui, sans-serif;
@@ -56,6 +57,9 @@
   --on-accent: light-dark(oklch(99% 0.005 var(--hue)), oklch(18% 0.02 var(--hue)));
   --hover: color-mix(in oklch, var(--text) 6%, transparent);
   --selected: color-mix(in oklch, var(--accent) 14%, transparent);
+  /* Hover for things that have a solid fill of their own. */
+  --surface-hover: color-mix(in oklch, var(--text) 6%, var(--surface));
+  --accent-hover: color-mix(in oklch, var(--text) 12%, var(--accent));
   /* Every hue the accent can take, at one lightness, for the hue picker. */
   --hue-track: linear-gradient(
     to right in oklch longer hue,

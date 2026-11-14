@@ -1,7 +1,8 @@
-import type { ButtonHTMLAttributes } from "react";
+import type { ComponentProps } from "react";
 import styles from "./Button.module.css";
 
-interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
+/** A native button's props, minus `className`: every button looks the same. */
+interface Props extends Omit<ComponentProps<"button">, "className"> {
   /** The main action of a view. At most one per view. */
   primary?: boolean;
 }

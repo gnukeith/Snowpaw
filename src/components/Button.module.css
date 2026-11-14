@@ -9,7 +9,7 @@
 }
 
 .button:hover {
-  background: color-mix(in oklch, var(--text) 6%, var(--surface));
+  background: var(--surface-hover);
 }
 
 .button:disabled {
@@ -25,5 +25,5 @@
 }
 
 .primary:hover {
-  background: color-mix(in oklch, var(--text) 12%, var(--accent));
+  background: var(--accent-hover);
 }
