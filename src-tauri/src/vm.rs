@@ -221,7 +221,8 @@ fn session_owner(name: &str) -> Option<u32> {
 
 fn is_session_file(name: &str) -> bool {
     let frame = name.strip_prefix("frame-").and_then(|rest| rest.strip_suffix(".png"));
-    name == CONTROL_SOCKET || frame.is_some_and(is_number)
+    // The frame counter is a u64, so a longer number is not one of ours either.
+    name == CONTROL_SOCKET || frame.is_some_and(|number| is_number(number) && number.parse::<u64>().is_ok())
 }
 
 /// True for a positive whole number written the way this module writes one:
@@ -411,7 +412,8 @@ mod tests {
             assert_eq!(session_owner(name), None, "{name}");
         }
         assert!(is_session_file("qmp.sock") && is_session_file("frame-12.png"));
-        for name in ["frame-.png", "frame-x.png", "frame-+1.png", "frame-01.png", "frame-1.png.bak", "notes.txt"] {
+        assert!(is_session_file("frame-18446744073709551615.png"), "the largest frame number");
+        for name in ["frame-.png", "frame-x.png", "frame-+1.png", "frame-01.png", "frame-18446744073709551616.png", "frame-1.png.bak", "notes.txt"] {
             assert!(!is_session_file(name), "{name}");
         }
     }

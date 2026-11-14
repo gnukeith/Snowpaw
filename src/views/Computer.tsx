@@ -97,7 +97,10 @@ export function Computer() {
   }
 
   const message =
-    error ?? (undrawn ? "The screen could not be drawn. The computer is still running." : null);
+    error ??
+    (undrawn && power === "on"
+      ? "The screen could not be drawn. The computer is still running."
+      : null);
   const problem = message && (
     <p className={styles.error} role="alert">
       {message}
