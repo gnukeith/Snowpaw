@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import type { Agent } from "../data/agents";
 import { decodePicture } from "../data/picture";
 import styles from "./Avatar.module.css";
+import { Paw } from "./Paw";
 
 interface Props {
-  agent: Pick<Agent, "hue" | "picture">;
+  /** Whose face it is: an agent, or the person using the app. */
+  who: { picture?: string; hue?: number };
+  /** Letters to show while there is no picture. Without them, a paw. */
+  initials?: string;
   size: "sm" | "md" | "lg" | "xl";
 }
 
-/** An agent's picture, or a paw on the agent's own hue until it has one.
-    Decorative: the agent's name is always written next to it. */
-export function Avatar({ agent, size }: Props) {
-  const { hue, picture } = agent;
+/** A picture of someone, or a stand-in until they have one: a paw on the
+    agent's own hue, or the person's initials. Decorative: whoever it is, their
+    name is written next to it or the place it sits says who they are. */
+export function Avatar({ who, initials, size }: Props) {
+  const { hue, picture } = who;
   const canvas = useRef<HTMLCanvasElement>(null);
   // The picture that could not be drawn, if any, so a new one gets its own try.
   const [broken, setBroken] = useState<string>();
@@ -21,7 +25,7 @@ export function Avatar({ agent, size }: Props) {
     let live = true;
     // Inside the chain, so that everything that can go wrong on the way to a
     // drawn picture, from text that is not base64 to a canvas that will not
-    // take it, ends in the paw instead.
+    // take it, ends in the stand-in instead.
     Promise.resolve(picture)
       .then(decodePicture)
       .then((image) => {
@@ -44,18 +48,21 @@ export function Avatar({ agent, size }: Props) {
   }, [picture]);
 
   const look = `${styles.avatar} ${styles[size]}`;
-  const tint = { "--avatar-hue": hue } as CSSProperties;
+  const tint = hue === undefined ? undefined : ({ "--avatar-hue": hue } as CSSProperties);
 
   if (picture && picture !== broken) {
     return <canvas ref={canvas} className={look} style={tint} data-avatar aria-hidden="true" />;
   }
+  if (initials !== undefined) {
+    return (
+      <span className={`${look} ${styles.initials}`} aria-hidden="true">
+        {initials}
+      </span>
+    );
+  }
   return (
-    <svg className={look} style={tint} data-avatar viewBox="16 36 480 480" aria-hidden="true">
-      <ellipse cx="146" cy="232" rx="38" ry="50" transform="rotate(-24 146 232)" />
-      <ellipse cx="214" cy="160" rx="40" ry="54" transform="rotate(-8 214 160)" />
-      <ellipse cx="298" cy="160" rx="40" ry="54" transform="rotate(8 298 160)" />
-      <ellipse cx="366" cy="232" rx="38" ry="50" transform="rotate(24 366 232)" />
-      <path d="M256 250c-62 0-112 52-112 104 0 36 28 56 60 56 20 0 34-8 52-8s32 8 52 8c32 0 60-20 60-56 0-52-50-104-112-104z" />
-    </svg>
+    <span className={look} style={tint} data-avatar aria-hidden="true">
+      <Paw className={styles.paw} />
+    </span>
   );
 }

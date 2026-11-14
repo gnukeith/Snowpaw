@@ -87,18 +87,34 @@
   font-size: var(--text-sm);
 }
 
+/* Lines up with the message under it, past the face beside that message. */
 .sender {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding-top: var(--space-2);
+  padding: var(--space-2) 0 0 calc(var(--avatar-md) + var(--space-2));
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
 
+/* A message and the face of whoever wrote it: theirs on the left, yours on
+   the right. The face's place is kept even where no face is shown, so every
+   message in a run starts at the same edge. */
+.row,
+.mineRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.mineRow {
+  flex-direction: row-reverse;
+}
+
+.face {
+  flex: none;
+  width: var(--avatar-md);
+}
+
 /* Messages are the one part of the app that is text to read and copy. */
 .theirs {
-  align-self: flex-start;
   max-width: min(var(--prose-width), var(--bubble-width));
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-bubble);
@@ -111,7 +127,6 @@
 
 .mine {
   composes: theirs;
-  align-self: flex-end;
   background: var(--bubble-user);
   color: var(--on-bubble-user);
 }

@@ -10,8 +10,9 @@ interface Props {
   agents: Agent[];
   work: AllWork;
   selected?: Agent;
-  userName: string;
-  /** Set when agents could not be written to storage. */
+  /** The person using the app. */
+  user: { name: string; picture?: string };
+  /** Set when agents or the user's picture could not be written to storage. */
   unsaved: boolean;
   /** The window's buttons, when the desktop puts them on this side. */
   windowButtons: ReactNode;
@@ -21,7 +22,7 @@ interface Props {
 }
 
 export function Sidebar(props: Props) {
-  const { agents, work, selected, userName, unsaved } = props;
+  const { agents, work, selected, user, unsaved } = props;
   // `null` while the search box is closed.
   const [query, setQuery] = useState<string | null>(null);
 
@@ -66,7 +67,7 @@ export function Sidebar(props: Props) {
               aria-current={current(agent)}
               onClick={() => props.onSelect(agent)}
             >
-              <Avatar agent={agent} size="lg" />
+              <Avatar who={agent} size="lg" />
               <span className={styles.pinName}>{agent.name}</span>
             </button>
           ))}
@@ -81,7 +82,7 @@ export function Sidebar(props: Props) {
             aria-current={current(agent)}
             onClick={() => props.onSelect(agent)}
           >
-            <Avatar agent={agent} size="md" />
+            <Avatar who={agent} size="md" />
             <span className={styles.rowText}>
               <span className={styles.rowName}>{agent.name}</span>
               <span className={styles.preview}>
@@ -95,14 +96,12 @@ export function Sidebar(props: Props) {
 
       {unsaved && (
         <p className={styles.note} role="alert">
-          Your agents could not be saved. They will be gone when the app closes.
+          Your changes could not be saved. They will be gone when the app closes.
         </p>
       )}
       <button className={styles.user} onClick={props.onOpenSettings}>
-        <span className={styles.initials} aria-hidden="true">
-          {initials(userName)}
-        </span>
-        <span className={styles.userName}>{userName}</span>
+        <Avatar who={user} initials={initials(user.name)} size="md" />
+        <span className={styles.userName}>{user.name}</span>
       </button>
     </nav>
   );

@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from "react";
+import { Avatar } from "../components/Avatar";
 import { Button } from "../components/Button";
 import { Dialog } from "../components/Dialog";
 import { Input } from "../components/Input";
+import { PictureField } from "../components/PictureField";
 import { Segmented } from "../components/Segmented";
-import { maxNameLength } from "../data/agents";
+import { cleanName, initials, maxNameLength } from "../data/agents";
 import { modes, type Theme } from "../theme/theme";
 import styles from "./Settings.module.css";
 
@@ -13,6 +15,9 @@ interface Props {
   /** What is shown while they have not: this computer's name. */
   defaultName: string;
   onNameChange: (name: string) => void;
+  /** The picture the user chose for themselves, if any. */
+  picture: string | undefined;
+  onPictureChange: (picture: string | undefined) => void;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
   /** Present in development builds only. */
@@ -60,19 +65,26 @@ export function Settings(props: Props) {
   );
 }
 
-function General({ name, defaultName, onNameChange }: Props) {
+function General({ name, defaultName, onNameChange, picture, onPictureChange }: Props) {
   return (
-    <Row label="Your name" hint="Left empty, it is this computer's name.">
-      <div className={styles.field}>
-        <Input
-          value={name}
-          placeholder={defaultName}
-          maxLength={maxNameLength}
-          aria-label="Your name"
-          onChange={(event) => onNameChange(event.target.value)}
-        />
-      </div>
-    </Row>
+    <>
+      <Row label="Your picture" hint="Shown beside what you write in a conversation.">
+        <PictureField hasPicture={picture !== undefined} onChange={onPictureChange}>
+          <Avatar who={{ picture }} initials={initials(cleanName(name) || defaultName)} size="lg" />
+        </PictureField>
+      </Row>
+      <Row label="Your name" hint="Left empty, it is this computer's name.">
+        <div className={styles.field}>
+          <Input
+            value={name}
+            placeholder={defaultName}
+            maxLength={maxNameLength}
+            aria-label="Your name"
+            onChange={(event) => onNameChange(event.target.value)}
+          />
+        </div>
+      </Row>
+    </>
   );
 }
 

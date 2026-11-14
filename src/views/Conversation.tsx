@@ -8,7 +8,7 @@ import {
 } from "react";
 import { Avatar } from "../components/Avatar";
 import { IconButton } from "../components/IconButton";
-import { maxPinned, type Agent } from "../data/agents";
+import { initials, maxPinned, type Agent } from "../data/agents";
 import type { Message } from "../data/conversation";
 import styles from "./Conversation.module.css";
 
@@ -16,6 +16,8 @@ interface Props {
   agent: Agent;
   /** Every agent, to put a name and a face to messages from other agents. */
   agents: Agent[];
+  /** The person using the app, to put a face to what they wrote. */
+  user: { name: string; picture?: string };
   messages: Message[];
   /** False when the pin limit is reached and this agent is not pinned. */
   canPin: boolean;
@@ -39,7 +41,7 @@ const clock = new Intl.DateTimeFormat(undefined, {
 });
 
 export function Conversation(props: Props) {
-  const { agent, agents, messages, canPin, onSend, onTogglePin, onEdit } = props;
+  const { agent, agents, user, messages, canPin, onSend, onTogglePin, onEdit } = props;
   const [draft, setDraft] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
@@ -85,7 +87,7 @@ export function Conversation(props: Props) {
             title={props.panelOpen ? "Hide what this agent is doing" : "Show what this agent is doing"}
             onClick={props.onTogglePanel}
           >
-            <Avatar agent={agent} size="sm" />
+            <Avatar who={agent} size="sm" />
             <span className={styles.name}>{agent.name}</span>
           </button>
         </h1>
@@ -111,9 +113,17 @@ export function Conversation(props: Props) {
         )}
         {messages.map((message, index) => {
           const previous = messages[index - 1];
+          const next = messages[index + 1];
           const mine = message.from === "user";
           // A message that is not to or from the person: one agent writing to another.
           const between = !mine && (message.from !== agent.id || message.to !== undefined);
+          // As in a group chat, a face goes beside the last of a run of
+          // messages from the same sender to the same reader.
+          const lastOfRun =
+            !next ||
+            next.from !== message.from ||
+            next.to !== message.to ||
+            next.at - message.at > quietGap;
           return (
             <div key={message.id} className={styles.entry}>
               {(!previous || message.at - previous.at > quietGap) && (
@@ -123,13 +133,22 @@ export function Conversation(props: Props) {
               )}
               {between && (
                 <span className={styles.sender}>
-                  <Avatar agent={agents.find((other) => other.id === message.from) ?? agent} size="sm" />
                   {name(message.from)} to {message.to ? name(message.to) : "you"}
                 </span>
               )}
-              <p className={mine ? styles.mine : between ? styles.between : styles.theirs}>
-                {message.text}
-              </p>
+              <div className={mine ? styles.mineRow : styles.row}>
+                <span className={styles.face}>
+                  {lastOfRun &&
+                    (mine ? (
+                      <Avatar who={user} initials={initials(user.name)} size="md" />
+                    ) : (
+                      <Avatar who={agents.find((other) => other.id === message.from) ?? {}} size="md" />
+                    ))}
+                </span>
+                <p className={mine ? styles.mine : between ? styles.between : styles.theirs}>
+                  {message.text}
+                </p>
+              </div>
             </div>
           );
         })}

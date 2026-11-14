@@ -15,7 +15,7 @@ import {
 } from "./data/agents";
 import { userMessage, workOf, type AllWork } from "./data/conversation";
 import { parseButtonLayout, type ButtonLayout } from "./data/frame";
-import { loadName, saveName } from "./data/profile";
+import { loadName, loadPicture, saveName, savePicture } from "./data/profile";
 import { applyTheme, loadTheme, saveTheme } from "./theme/theme";
 import { AgentEditor } from "./views/AgentEditor";
 import { AgentPanel } from "./views/AgentPanel";
@@ -26,6 +26,7 @@ export function App() {
   const [theme, setTheme] = useState(loadTheme);
   // What the user typed for their own name, and what stands in while that is empty.
   const [name, setName] = useState(loadName);
+  const [picture, setPicture] = useState(loadPicture);
   const [deviceName, setDeviceName] = useState("");
   const [agents, setAgents] = useState(loadAgents);
   const [unsaved, setUnsaved] = useState(false);
@@ -47,8 +48,11 @@ export function App() {
   }, [theme]);
 
   useEffect(() => {
-    setUnsaved(!saveAgents(agents));
-  }, [agents]);
+    // Both are written every time, so that one failing is not hidden by the
+    // other succeeding.
+    const saved = [saveAgents(agents), savePicture(picture)];
+    setUnsaved(saved.includes(false));
+  }, [agents, picture]);
 
   useEffect(() => saveName(name), [name]);
 
@@ -105,6 +109,8 @@ export function App() {
     setEditing(null);
   }
 
+  const user = { name: cleanName(name) || defaultName, picture };
+
   // The buttons on the far side belong in the window's far corner, which is
   // the agent's panel while that is open and the conversation otherwise.
   const farButtons = <WindowButtons buttons={buttons?.end ?? []} />;
@@ -115,7 +121,7 @@ export function App() {
         agents={agents}
         work={work}
         selected={selected}
-        userName={cleanName(name) || defaultName}
+        user={user}
         unsaved={unsaved}
         windowButtons={<WindowButtons buttons={buttons?.start ?? []} />}
         onSelect={(agent) => setSelectedId(agent.id)}
@@ -131,6 +137,7 @@ export function App() {
               key={selected.id}
               agent={selected}
               agents={agents}
+              user={user}
               messages={workOf(work, selected.id).messages}
               canPin={selected.pinned || canPin(agents)}
               panelOpen={panelOpen}
@@ -182,6 +189,8 @@ export function App() {
             name={name}
             defaultName={defaultName}
             onNameChange={setName}
+            picture={picture}
+            onPictureChange={setPicture}
             theme={theme}
             onThemeChange={setTheme}
             developer={developer}

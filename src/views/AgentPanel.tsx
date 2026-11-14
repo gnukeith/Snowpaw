@@ -54,7 +54,7 @@ export function AgentPanel({ agent, work, windowButtons, onClose }: Props) {
         <header className={styles.header} data-window-drag={full ? undefined : ""}>
           {/* Says whose work this is when the conversation is not beside it:
               in a narrow window and in full screen. */}
-          <Avatar agent={agent} size="sm" />
+          <Avatar who={agent} size="sm" />
           <h2 className={styles.name}>{agent.name}</h2>
           <IconButton
             icon={full ? "collapse" : "expand"}
