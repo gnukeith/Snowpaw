@@ -102,7 +102,8 @@ export function ConnectionForm({ id, connection, onSave, onRemove, onClose, auto
     const timer = setTimeout(() => {
       hasKey(id, address).then(
         (saved) => current && changes.current === asked && setKeySaved(saved),
-        () => {},
+        // Left unknown, which keeps Connect and any warning offered, and said.
+        (failure) => current && changes.current === asked && setOutcome({ state: "failed", why: describeFailure(failure) }),
       );
     }, settleMs);
     return () => {

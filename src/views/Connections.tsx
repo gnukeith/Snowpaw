@@ -52,7 +52,9 @@ export function Models({ connections, onChange }: ModelsProps) {
           key={id}
           id={id}
           connection={connections.find((other) => other.id === id)}
-          autoFocus={open !== null}
+          // Opened from the list, or put back after the last one was removed:
+          // either way what had focus has gone.
+          autoFocus={open !== null || returned}
           onSave={(saved) => {
             onChange((list) =>
               list.some((other) => other.id === saved.id)
@@ -114,17 +116,21 @@ export function Search() {
   // Goes up on every save or forget, so a late answer about whether a key
   // is saved cannot overwrite what it changed.
   const changes = useRef(0);
+  // False once the panel has gone, so a save that lands afterwards does not
+  // go on to spend a search.
+  const shown = useRef(true);
   const working = outcome.state === "working";
 
   useEffect(() => {
+    shown.current = true;
     const asked = changes.current;
-    let current = true;
     hasKey(search.id, search.address).then(
-      (has) => current && changes.current === asked && setSaved(has),
-      () => {},
+      (has) => shown.current && changes.current === asked && setSaved(has),
+      // Not knowing is said, and Test and Forget stay available to try again.
+      (failure) => shown.current && changes.current === asked && setOutcome({ state: "failed", why: describeFailure(failure) }),
     );
     return () => {
-      current = false;
+      shown.current = false;
     };
   }, []);
 
@@ -142,12 +148,13 @@ export function Search() {
         changes.current += 1;
         await saveKey(search.id, search.address, key);
         has = true;
+        if (!shown.current) return;
         setSaved(true);
       }
       await testSearch();
-      setOutcome({ state: "connected" });
+      if (shown.current) setOutcome({ state: "connected" });
     } catch (failure) {
-      setOutcome({ state: "failed", why: describeFailure(failure, has) });
+      if (shown.current) setOutcome({ state: "failed", why: describeFailure(failure, has) });
     }
   }
 
@@ -157,10 +164,11 @@ export function Search() {
     try {
       changes.current += 1;
       await forgetKey(search.id);
+      if (!shown.current) return;
       setSaved(false);
       setOutcome({ state: "idle" });
     } catch (failure) {
-      setOutcome({ state: "failed", why: describeFailure(failure) });
+      if (shown.current) setOutcome({ state: "failed", why: describeFailure(failure) });
     }
   }
 
@@ -191,13 +199,14 @@ export function Search() {
           {outcome.state === "connected" && "Connected. A test search came back."}
           {outcome.state === "failed" && outcome.why}
         </p>
-        {saved && (
+        {/* While it is not known whether a key is saved, both stay offered. */}
+        {saved !== false && (
           <Button onClick={forget} disabled={working}>
             Forget the key
           </Button>
         )}
-        <Button primary={!saved} type="submit" disabled={working || (!typed && !saved)}>
-          {saved && !typed ? "Test" : "Connect"}
+        <Button primary={!saved} type="submit" disabled={working || (!typed && saved === false)}>
+          {saved !== false && !typed ? "Test" : "Connect"}
         </Button>
       </div>
       <p className={styles.note}>
