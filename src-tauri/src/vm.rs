@@ -1,10 +1,11 @@
 //! The agent's computer: one QEMU virtual machine, run as a child of the app.
 //!
 //! What this does and does not protect against. The guest has no network
-//! card, no shared folder, no clipboard and no USB, and QEMU runs under its
-//! own seccomp filter. But QEMU runs as the desktop user: a bug that lets the
-//! guest escape QEMU reaches that user's files. Treat this as a prototype
-//! boundary, not as containment for hostile code.
+//! card, no shared folder, no clipboard and no USB, its only disc is
+//! read-only, and QEMU runs under its own seccomp filter. But QEMU runs as
+//! the desktop user: a bug that lets the guest escape QEMU reaches that
+//! user's files. Treat this as a prototype boundary, not as containment for
+//! hostile code.
 
 use crate::qmp::Qmp;
 use serde_json::json;
@@ -21,6 +22,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 /// A fixed absolute path, so a changed PATH cannot swap in another program.
 const QEMU: &str = "/usr/bin/qemu-system-x86_64";
 const CONTROL_SOCKET: &str = "qmp.sock";
+/// What the guest gets. A desktop is not usable with much less.
+const MEMORY_MB: &str = "4096";
+const PROCESSORS: &str = "4";
 /// The kernel's limit on a unix socket path, including its closing zero byte.
 const MAX_SOCKET_PATH: usize = 108;
 
@@ -83,12 +87,26 @@ impl Drop for Process {
 impl Vm {
     /// Starts QEMU. Returns as soon as the process exists.
     ///
+    /// `disc` is an image for the guest to boot from, given as an absolute
+    /// path. The guest cannot write to it. Without one the machine is empty.
+    ///
     /// Call this from a thread that lives as long as the app: QEMU is told to
     /// exit when its parent dies, and Linux ties that to the spawning thread.
-    pub fn spawn() -> io::Result<Spawned> {
+    pub fn spawn(disc: Option<&Path>) -> io::Result<Spawned> {
+        let mut qemu = Command::new(QEMU);
+        if let Some(disc) = disc {
+            // QEMU runs inside the session directory, so a relative path would
+            // name a file there.
+            let path = disc.to_str().filter(|_| disc.is_absolute());
+            let path = path.ok_or_else(|| io::Error::other("the disc needs an absolute, printable path"))?;
+            // Written as JSON, so nothing in the path can be read as an option.
+            let file = json!({ "driver": "file", "filename": path, "read-only": true, "node-name": "disc" });
+            qemu.args(["-blockdev", &file.to_string()])
+                .args(["-device", "virtio-scsi-pci", "-device", "scsi-cd,drive=disc,bootindex=0"]);
+        }
         let dir = session_dir()?;
-        let child = Command::new(QEMU)
-            .args(["-accel", "kvm", "-machine", "q35", "-cpu", "host", "-m", "2048", "-smp", "2"])
+        let child = qemu
+            .args(["-accel", "kvm", "-machine", "q35", "-cpu", "host", "-m", MEMORY_MB, "-smp", PROCESSORS])
             // Only the devices named here exist: no network card, no audio, no USB.
             .args(["-nodefaults", "-no-user-config", "-nic", "none"])
             // The screen is read through the control socket, never shown or served by QEMU.
@@ -458,7 +476,7 @@ mod tests {
         if !can_run_here() {
             return;
         }
-        let vm = Vm::spawn().unwrap().connect().unwrap();
+        let vm = Vm::spawn(None).unwrap().connect().unwrap();
         let dir = vm.process.dir.clone();
         assert_eq!(fs::metadata(&dir).unwrap().mode() & 0o777, 0o700);
         assert!(!vm.has_exited());
@@ -480,13 +498,34 @@ mod tests {
         assert!(!Path::new(&format!("/proc/{pid}")).exists(), "QEMU is gone");
     }
 
+    /// Runs the real QEMU. The disc is attached read-only, whatever its path contains.
+    #[test]
+    fn attaches_a_read_only_disc() {
+        if !can_run_here() {
+            return;
+        }
+        let scratch = Scratch::new("disc");
+        let disc = scratch.0.join("a,b \"c\".iso");
+        fs::File::create(&disc).unwrap().set_len(1024 * 1024).unwrap();
+
+        let vm = Vm::spawn(Some(&disc)).unwrap().connect().unwrap();
+        let nodes = lock(&vm.screen).qmp.execute("query-named-block-nodes", json!({})).unwrap();
+        let node = nodes.as_array().unwrap().iter().find(|node| node["node-name"] == "disc").unwrap();
+        assert_eq!(node["image"]["filename"], disc.to_str().unwrap());
+        assert_eq!(node["ro"], true);
+
+        assert!(Vm::spawn(Some(Path::new("relative.iso"))).is_err(), "a relative path is refused");
+        let missing = Vm::spawn(Some(&scratch.0.join("missing.iso"))).unwrap();
+        assert!(missing.connect().is_err(), "QEMU does not start without its disc");
+    }
+
     /// Runs the real QEMU. Stopping must not wait for a capture in progress.
     #[test]
     fn kill_does_not_wait_for_a_capture() {
         if !can_run_here() {
             return;
         }
-        let vm = Arc::new(Vm::spawn().unwrap().connect().unwrap());
+        let vm = Arc::new(Vm::spawn(None).unwrap().connect().unwrap());
         vm.frame().unwrap();
         // This capture now waits out the rate limit while holding the screen.
         let capturing = thread::spawn({
@@ -509,7 +548,7 @@ mod tests {
         if !can_run_here() {
             return;
         }
-        let spawned = Vm::spawn().unwrap();
+        let spawned = Vm::spawn(None).unwrap();
         let dir = spawned.0.dir.clone();
         spawned.0.kill();
         assert!(spawned.connect().is_err(), "QEMU died before the control socket was used");

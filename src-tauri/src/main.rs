@@ -5,6 +5,7 @@ mod qmp;
 mod vm;
 
 use std::io;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, mpsc};
 use std::time::Duration;
 use tauri::ipc::Response;
@@ -13,6 +14,8 @@ use vm::Vm;
 
 /// How long the main thread gets to spawn QEMU once asked.
 const SPAWN_TIMEOUT: Duration = Duration::from_secs(5);
+/// The image the computer boots from, inside the app's data directory.
+const BOOT_DISC: &str = "images/Fedora-Workstation-Live-45-1.4.x86_64.iso";
 
 /// The one virtual machine the app can run. The lock is held only for a
 /// moment, never across a capture or a start, so stopping is always possible.
@@ -105,20 +108,23 @@ fn vm_start(app: AppHandle, computer: State<Computer>) -> Result<(), &'static st
     let Some(ticket) = computer.begin_start()? else {
         return Ok(());
     };
-    let vm = start(&app).map_err(|error| {
+    let disc = app.path().app_data_dir().map(|dir| dir.join(BOOT_DISC));
+    let disc = disc.ok().filter(|disc| disc.is_file());
+    let disc = disc.ok_or("The Fedora image is missing. The README explains how to get it.")?;
+    let vm = start(&app, disc).map_err(|error| {
         eprintln!("vm_start: {error}");
         "The computer could not be started."
     })?;
     computer.finish_start(ticket, vm)
 }
 
-fn start(app: &AppHandle) -> io::Result<Vm> {
+fn start(app: &AppHandle, disc: PathBuf) -> io::Result<Vm> {
     // QEMU has to be spawned from the main thread (see `Vm::spawn`). Waiting
     // for it to come up happens here, so the window stays responsive.
     let (send, receive) = mpsc::channel();
     app.run_on_main_thread(move || {
         // If nobody is waiting any more, the machine is dropped, which kills it.
-        let _ = send.send(Vm::spawn());
+        let _ = send.send(Vm::spawn(Some(&disc)));
     })
     .map_err(io::Error::other)?;
     receive.recv_timeout(SPAWN_TIMEOUT).map_err(io::Error::other)??.connect()
@@ -169,7 +175,7 @@ mod tests {
     use super::*;
 
     fn machine() -> Vm {
-        Vm::spawn().unwrap().connect().unwrap()
+        Vm::spawn(None).unwrap().connect().unwrap()
     }
 
     #[test]

@@ -143,8 +143,9 @@ export function Computer() {
     <div className={styles.off}>
       <h1 className={styles.title}>The computer is off</h1>
       <p className={styles.hint}>
-        Starting it boots an empty virtual machine with no network. There is no operating system on
-        it yet, so its screen shows the firmware.
+        Starting it boots Fedora from a read-only image, in a virtual machine with no network.
+        Nothing it does is kept once it stops. For now you can watch its screen, but not type or
+        click in it.
       </p>
       {problem}
       <Button ref={action} primary disabled={busy} onClick={() => turn(true)}>
