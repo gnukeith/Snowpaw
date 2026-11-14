@@ -12,11 +12,12 @@
   contain: paint;
 }
 
-/* A formula on a line of its own. One too wide for its message scrolls
-   sideways: the browser does not break a formula across lines. */
+/* A formula on a line of its own. One too wide or too tall for its message
+   scrolls: the browser does not break a formula across lines. */
 .display {
   display: block;
-  overflow-x: auto;
+  max-height: var(--formula-height);
+  overflow: auto;
   contain: paint;
   padding: var(--space-1) 0;
 }

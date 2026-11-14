@@ -53,6 +53,8 @@
   --dialog-width: calc(var(--unit) * 100);
   --menu-width: calc(var(--unit) * 40);
   --dialog-height: calc(var(--unit) * 120);
+  /* Tallest a formula on lines of its own gets before it scrolls. */
+  --formula-height: calc(var(--unit) * 100);
   /* Tallest a block of output gets before it scrolls. */
   --output-height: calc(var(--unit) * 60);
   --content-width: calc(var(--unit) * 160);

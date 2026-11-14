@@ -2,7 +2,7 @@ import katex from "katex";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { BlockProps } from "../types";
 import styles from "./Formula.module.css";
-import { largest, sizeOf } from "./size.ts";
+import { checkSizes, largest } from "./size.ts";
 
 /* The formula is written by an agent that may have read anything, so KaTeX
    is held to its safe settings: no links, images or raw HTML (`trust`), and
@@ -23,11 +23,7 @@ export default function Formula({ source, inline }: BlockProps) {
       // KaTeX makes the elements itself, so no HTML text is ever parsed.
       const built = document.createElement("span");
       katex.render(source, built, { ...limits, output: "mathml", displayMode: !inline });
-      for (const element of built.querySelectorAll("*")) {
-        for (const { name, value } of element.attributes) {
-          if (sizeOf(name, value) > largest) throw new Error("This formula asks for more room than a message has.");
-        }
-      }
+      checkSizes(built);
       place.current.replaceChildren(...built.childNodes);
       setFailure(undefined);
     } catch (error) {
