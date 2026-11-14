@@ -14,7 +14,7 @@ interface Props {
   selected?: Agent;
   /** The person using the app. */
   user: { name: string; picture?: string };
-  /** Set when agents or the user's picture could not be written to storage. */
+  /** Set when something the user changed could not be written to storage. */
   unsaved: boolean;
   /** The window's buttons, when the desktop puts them on this side. */
   windowButtons: ReactNode;

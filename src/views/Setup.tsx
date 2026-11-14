@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "../components/Button";
 import { Dialog } from "../components/Dialog";
 import { Row } from "../components/Row";
@@ -11,6 +11,7 @@ import {
   type ConnectionsProps,
   type ProfileProps,
 } from "./Settings";
+import form from "../components/Form.module.css";
 import settings from "./Settings.module.css";
 import styles from "./Setup.module.css";
 
@@ -51,6 +52,16 @@ export function Setup(props: Props) {
   const [index, setIndex] = useState(0);
   const step = steps[index];
   const last = index === steps.length - 1;
+  const heading = useRef<HTMLHeadingElement>(null);
+  // Whether a step has been moved to: the first is shown with focus where
+  // the dialog puts it, and each one after takes focus on its heading, so
+  // that it is read out and the keyboard starts from the top of it.
+  const moved = useRef(false);
+
+  useEffect(() => {
+    if (moved.current) heading.current?.focus();
+    moved.current = true;
+  }, [index]);
 
   return (
     <Dialog title="Welcome to Snowpaw" wide onClose={() => props.onDone(false)}>
@@ -69,12 +80,14 @@ export function Setup(props: Props) {
         </nav>
         <div className={styles.step}>
           <section className={settings.content}>
-            <h2 className={settings.heading}>{step.heading}</h2>
+            <h2 ref={heading} tabIndex={-1} className={settings.heading}>
+              {step.heading}
+            </h2>
             <step.Panel {...props} />
           </section>
           <footer className={styles.footer}>
             <Button onClick={() => props.onDone(false)}>{last ? "Not now" : "Skip setup"}</Button>
-            <span className={styles.spacer} />
+            <span className={form.spacer} />
             {index > 0 && <Button onClick={() => setIndex(index - 1)}>Back</Button>}
             {last ? (
               <Button primary onClick={() => props.onDone(true)}>
@@ -96,7 +109,7 @@ function Ready({ connections }: Props) {
   const [first] = connections;
   return (
     <>
-      <p className={styles.lead}>
+      <p className={form.lead}>
         That is all Snowpaw needs to know for now. Everything here can be changed in Settings: click your name at the
         bottom of the sidebar.
       </p>

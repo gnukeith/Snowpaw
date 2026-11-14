@@ -51,7 +51,10 @@ export function App() {
   const [picture, setPicture] = useState(loadPicture);
   const [deviceName, setDeviceName] = useState("");
   const [agents, setAgents] = useState(loadAgents);
-  const [unsaved, setUnsaved] = useState(false);
+  // What could not be written to storage, by what it is. Each is written
+  // only when it changes, and each keeps its own failure, so one writing
+  // well does not hide another that did not.
+  const [unsaved, setUnsaved] = useState<Record<string, boolean>>({});
   const [selectedId, setSelectedId] = useState<string>();
   // Kept in memory only: nothing answers yet, and where an agent's work is
   // stored is a decision for when something does.
@@ -85,12 +88,15 @@ export function App() {
     return () => desktop.removeEventListener("change", tintWindow);
   }, [theme]);
 
-  useEffect(() => {
-    // All are written every time, so that one failing is not hidden by
-    // another succeeding.
-    const saved = [saveAgents(agents), savePicture(picture), saveConnections(connections)];
-    setUnsaved(saved.includes(false));
-  }, [agents, picture, connections]);
+  /** Records whether a part could be written, changing nothing if that is
+      what was already recorded. */
+  function wrote(part: string, ok: boolean) {
+    setUnsaved((now) => (Boolean(now[part]) === !ok ? now : { ...now, [part]: !ok }));
+  }
+
+  useEffect(() => wrote("agents", saveAgents(agents)), [agents]);
+  useEffect(() => wrote("picture", savePicture(picture)), [picture]);
+  useEffect(() => wrote("connections", saveConnections(connections)), [connections]);
 
   useEffect(() => saveName(name), [name]);
 
@@ -181,7 +187,7 @@ export function App() {
           work={work}
           selected={selected}
           user={user}
-          unsaved={unsaved}
+          unsaved={Object.values(unsaved).some(Boolean)}
           windowButtons={buttons?.start.length ? <WindowButtons buttons={buttons.start} /> : null}
           canPin={canPin(agents)}
           onTogglePin={togglePin}
@@ -300,7 +306,7 @@ export function App() {
               connections={connections}
               onConnectionsChange={setConnections}
               onDone={(makeAgent) => {
-                saveSetupDone();
+                wrote("setup", saveSetupDone());
                 setSetupOpen(false);
                 if (makeAgent) setEditing("new");
               }}

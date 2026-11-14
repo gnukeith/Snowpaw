@@ -19,13 +19,3 @@
   padding: var(--edge);
   border-top: var(--hairline) solid var(--border);
 }
-
-.spacer {
-  flex: 1;
-}
-
-.lead {
-  max-width: var(--prose-width);
-  padding-bottom: var(--space-4);
-  color: var(--text-muted);
-}

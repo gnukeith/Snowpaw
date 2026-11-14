@@ -1,17 +1,6 @@
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.field {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.label {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
+/* Which server a kept connection talks to. It is fixed, so it is text. */
+.where {
+  font-weight: var(--weight-medium);
 }
 
 /* A text box with the button that acts on it at its end. */
@@ -20,29 +9,22 @@
   gap: var(--space-2);
 }
 
-.actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.spacer {
-  flex: 1;
-}
-
-/* Under the key: where it is kept, until Connect has something to report,
-   then that, in the colour of how it went. */
-.status {
+/* Where the key is kept, or, for an address that is not encrypted, the
+   warning that it would travel in the clear. */
+.note {
   color: var(--text-muted);
   font-size: var(--text-sm);
-  user-select: text;
 }
 
-.status[data-state="connected"] {
-  color: var(--success);
-}
-
-.status[data-state="failed"] {
+.note[data-warning] {
   color: var(--danger);
+}
+
+.status {
+  composes: status from "../components/Form.module.css";
+}
+
+/* Takes no room while there is nothing to say. */
+.status:empty {
+  display: none;
 }

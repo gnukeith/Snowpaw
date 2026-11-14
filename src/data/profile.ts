@@ -72,10 +72,13 @@ export function loadSetupDone(): boolean {
   }
 }
 
-export function saveSetupDone() {
+/** Returns false when storage is denied or full. The steps then stay closed
+    until the app does, and open again the next time it starts. */
+export function saveSetupDone(): boolean {
   try {
     localStorage.setItem(setupKey, "done");
+    return true;
   } catch {
-    // Storage is denied or full. The steps stay closed until the app does.
+    return false;
   }
 }

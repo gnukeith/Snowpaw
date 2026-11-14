@@ -19,6 +19,11 @@ fn main() {
         "window_toggle_maximize",
         "window_close",
         "window_tint",
+        "key_save",
+        "key_exists",
+        "key_forget",
+        "models_list",
+        "search_test",
     ]);
     tauri_build::try_build(Attributes::new().app_manifest(commands)).expect("failed to run tauri-build");
 
