@@ -1,7 +1,15 @@
-/* The browser's own math layout, in the desktop's math font where it has one. */
+/* The browser's own math layout, in the math font the theme names. */
 .inline math,
 .display math {
-  font-family: "STIX Two Math", "Noto Sans Math", "Latin Modern Math", math;
+  font-family: var(--font-math);
+}
+
+/* Each formula draws inside its own box and nowhere else, whatever it asks
+   for: it cannot paint over the message around it. */
+.inline {
+  display: inline-block;
+  max-width: 100%;
+  contain: paint;
 }
 
 /* A formula on a line of its own. One too wide for its message scrolls
@@ -9,5 +17,6 @@
 .display {
   display: block;
   overflow-x: auto;
+  contain: paint;
   padding: var(--space-1) 0;
 }

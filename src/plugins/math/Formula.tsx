@@ -2,11 +2,12 @@ import katex from "katex";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { BlockProps } from "../types";
 import styles from "./Formula.module.css";
+import { largest, sizeOf } from "./size.ts";
 
 /* The formula is written by an agent that may have read anything, so KaTeX
    is held to its safe settings: no links, images or raw HTML (`trust`), and
    limits on how far a macro may expand and how large anything may be made. */
-const limits = { trust: false, maxExpand: 1000, maxSize: 20, throwOnError: true, strict: "ignore" } as const;
+const limits = { trust: false, maxExpand: 1000, maxSize: largest, throwOnError: true, strict: "ignore" } as const;
 
 /** A formula, drawn as MathML: the browser lays it out with the desktop's
     math font. KaTeX's own layout needs inline styles, which the app's
@@ -18,8 +19,16 @@ export default function Formula({ source, inline }: BlockProps) {
   useLayoutEffect(() => {
     if (!place.current) return;
     try {
-      // KaTeX builds the elements itself, so no HTML text is ever parsed.
-      katex.render(source, place.current, { ...limits, output: "mathml", displayMode: !inline });
+      // Built away from the page and checked before any of it is shown.
+      // KaTeX makes the elements itself, so no HTML text is ever parsed.
+      const built = document.createElement("span");
+      katex.render(source, built, { ...limits, output: "mathml", displayMode: !inline });
+      for (const element of built.querySelectorAll("*")) {
+        for (const { name, value } of element.attributes) {
+          if (sizeOf(name, value) > largest) throw new Error("This formula asks for more room than a message has.");
+        }
+      }
+      place.current.replaceChildren(...built.childNodes);
       setFailure(undefined);
     } catch (error) {
       setFailure(new Error(reason(error)));

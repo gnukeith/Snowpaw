@@ -63,6 +63,8 @@
   /* Type. */
   --font: system-ui, sans-serif;
   --font-mono: ui-monospace, monospace;
+  /* Formulas: a math font where the desktop has one, else the browser's own. */
+  --font-math: "STIX Two Math", "Noto Sans Math", "Latin Modern Math", math;
   --text-sm: 12px;
   --text-md: 14px;
   --text-lg: 20px;
