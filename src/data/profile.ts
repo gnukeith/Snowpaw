@@ -59,3 +59,23 @@ export function savePanelWidth(width: number | undefined) {
     // Storage is denied or full. The width still holds until the app closes.
   }
 }
+
+const setupKey = "snowpaw.setup";
+
+/** Whether the first-run steps have been finished or skipped. */
+export function loadSetupDone(): boolean {
+  try {
+    return localStorage.getItem(setupKey) === "done";
+  } catch {
+    // Storage is denied. Showing the steps on every start would be worse than never.
+    return true;
+  }
+}
+
+export function saveSetupDone() {
+  try {
+    localStorage.setItem(setupKey, "done");
+  } catch {
+    // Storage is denied or full. The steps stay closed until the app does.
+  }
+}

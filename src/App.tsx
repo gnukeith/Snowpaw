@@ -28,15 +28,18 @@ import {
   loadName,
   loadPanelWidth,
   loadPicture,
+  loadSetupDone,
   saveName,
   savePanelWidth,
   savePicture,
+  saveSetupDone,
 } from "./data/profile";
 import { applyTheme, loadTheme, saveTheme, tintWindow } from "./theme/theme";
 import { AgentEditor } from "./views/AgentEditor";
 import { AgentPanel } from "./views/AgentPanel";
 import { Conversation } from "./views/Conversation";
 import { Settings } from "./views/Settings";
+import { Setup } from "./views/Setup";
 import { TaskEditor } from "./views/TaskEditor";
 
 export function App() {
@@ -55,6 +58,8 @@ export function App() {
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [connections, setConnections] = useState(loadConnections);
+  // The first-run steps: open until they are finished or skipped, once.
+  const [setupOpen, setSetupOpen] = useState(() => !loadSetupDone());
   // The proposed task being changed before it is agreed to, and whose it is.
   const [proposing, setProposing] = useState<{ agentId: string; message: Message }>();
   const [panelOpen, setPanelOpen] = useState(false);
@@ -266,8 +271,30 @@ export function App() {
             onThemeChange={setTheme}
             connections={connections}
             onConnectionsChange={setConnections}
+            onSetup={() => {
+              setSettingsOpen(false);
+              setSetupOpen(true);
+            }}
             developer={developer}
             onClose={() => setSettingsOpen(false)}
+          />
+        )}
+        {setupOpen && (
+          <Setup
+            name={name}
+            defaultName={defaultName}
+            onNameChange={setName}
+            picture={picture}
+            onPictureChange={setPicture}
+            theme={theme}
+            onThemeChange={setTheme}
+            connections={connections}
+            onConnectionsChange={setConnections}
+            onDone={(makeAgent) => {
+              saveSetupDone();
+              setSetupOpen(false);
+              if (makeAgent) setEditing("new");
+            }}
           />
         )}
       </WindowFrame>

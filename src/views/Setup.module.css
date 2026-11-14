@@ -1,0 +1,31 @@
+/* A step and the buttons that move between steps, which stay in sight while
+   the step scrolls. */
+.step {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.step > section {
+  flex: 1;
+}
+
+.footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--edge);
+  border-top: var(--hairline) solid var(--border);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.lead {
+  max-width: var(--prose-width);
+  padding-bottom: var(--space-4);
+  color: var(--text-muted);
+}

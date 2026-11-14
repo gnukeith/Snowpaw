@@ -12,7 +12,8 @@ import { modes, type Theme } from "../theme/theme";
 import { Models, Search } from "./Connections";
 import styles from "./Settings.module.css";
 
-interface Props {
+/** Who the user is to their agents. */
+export interface ProfileProps {
   /** The name the user chose for themselves. Empty if they have not. */
   name: string;
   /** What is shown while they have not: this computer's name. */
@@ -21,10 +22,21 @@ interface Props {
   /** The picture the user chose for themselves, if any. */
   picture: string | undefined;
   onPictureChange: (picture: string | undefined) => void;
+}
+
+export interface AppearanceProps {
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
+}
+
+export interface ConnectionsProps {
   connections: Connection[];
   onConnectionsChange: (connections: Connection[]) => void;
+}
+
+interface Props extends ProfileProps, AppearanceProps, ConnectionsProps {
+  /** Shows the first-run steps again. */
+  onSetup: () => void;
   /** Present in development builds only. */
   developer?: { load: () => void; remove: () => void };
   onClose: () => void;
@@ -76,7 +88,18 @@ export function Settings(props: Props) {
   );
 }
 
-function General({ name, defaultName, onNameChange, picture, onPictureChange }: Props) {
+function General(props: Props) {
+  return (
+    <>
+      <Profile {...props} />
+      <Row label="Setup" hint="The steps Snowpaw took you through when it first opened.">
+        <Button onClick={props.onSetup}>Run it again</Button>
+      </Row>
+    </>
+  );
+}
+
+export function Profile({ name, defaultName, onNameChange, picture, onPictureChange }: ProfileProps) {
   return (
     <>
       <Row label="Your picture" hint="Shown beside what you write in a conversation.">
@@ -99,7 +122,7 @@ function General({ name, defaultName, onNameChange, picture, onPictureChange }: 
   );
 }
 
-function Appearance({ theme, onThemeChange }: Props) {
+export function Appearance({ theme, onThemeChange }: AppearanceProps) {
   return (
     <>
       <Row label="Theme" hint="System follows your desktop's light or dark setting.">

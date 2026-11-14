@@ -28,7 +28,8 @@
   color: var(--text);
 }
 
-.category[aria-current="page"] {
+/* The page that is open, in Settings, or the step, in the first-run steps. */
+.category[aria-current] {
   background: var(--selected);
   color: var(--text);
   font-weight: var(--weight-medium);
