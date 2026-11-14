@@ -27,7 +27,7 @@
 .panel {
   composes: panel from "../App.module.css";
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 
 .header {
@@ -35,11 +35,23 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--edge);
-  border-bottom: var(--hairline) solid var(--border);
+  padding-inline-start: var(--space-3);
 }
 
-.spacer {
+.name {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabs {
+  display: flex;
+  padding: 0 var(--edge) var(--edge);
+  border-bottom: var(--hairline) solid var(--border);
 }
 
 .body {

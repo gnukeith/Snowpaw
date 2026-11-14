@@ -10,6 +10,11 @@ fn main() {
         "vm_status",
         "vm_frame",
         "device_name",
+        "window_buttons",
+        "window_drag",
+        "window_minimize",
+        "window_toggle_maximize",
+        "window_close",
     ]);
     tauri_build::try_build(Attributes::new().app_manifest(commands)).expect("failed to run tauri-build");
 }

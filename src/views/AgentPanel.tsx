@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Avatar } from "../components/Avatar";
 import { IconButton } from "../components/IconButton";
 import { Segmented } from "../components/Segmented";
 import type { Agent } from "../data/agents";
@@ -12,6 +13,8 @@ import { Scheduled } from "./Scheduled";
 interface Props {
   agent: Agent;
   work: Work;
+  /** The window's buttons: while the panel is open, it is in the window's corner. */
+  windowButtons: ReactNode;
   onClose: () => void;
 }
 
@@ -19,7 +22,7 @@ interface Props {
 const tabs = ["computer", "activity", "changes", "scheduled"] as const;
 
 /** What an agent is doing, beside its conversation. */
-export function AgentPanel({ agent, work, onClose }: Props) {
+export function AgentPanel({ agent, work, windowButtons, onClose }: Props) {
   const panel = useRef<HTMLElement>(null);
   const [tab, setTab] = useState<(typeof tabs)[number]>("computer");
   const [full, setFull] = useState(false);
@@ -47,16 +50,22 @@ export function AgentPanel({ agent, work, onClose }: Props) {
   return (
     <aside ref={panel} className={styles.side} aria-label={`What ${agent.name} is doing`}>
       <div className={styles.panel}>
-        <header className={styles.header}>
-          <Segmented label="Show" options={tabs} value={tab} onChange={setTab} />
-          <span className={styles.spacer} />
+        <header className={styles.header} data-window-drag>
+          {/* Says whose work this is when the conversation is not beside it:
+              in a narrow window and in full screen. */}
+          <Avatar agent={agent} size="sm" />
+          <h2 className={styles.name}>{agent.name}</h2>
           <IconButton
             icon={full ? "collapse" : "expand"}
             label={full ? "Leave full screen" : "Full screen"}
             onClick={toggleFull}
           />
-          {!full && <IconButton icon="close" label="Close panel" onClick={onClose} />}
+          {!full && <IconButton icon="panel" label="Close panel" onClick={onClose} />}
+          {!full && windowButtons}
         </header>
+        <div className={styles.tabs}>
+          <Segmented fill label="Show" options={tabs} value={tab} onChange={setTab} />
+        </div>
         <div className={styles.body}>
           {tab === "computer" && <Computer />}
           {tab === "activity" && <Activity agent={agent} steps={work.steps} />}

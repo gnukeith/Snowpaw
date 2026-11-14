@@ -32,3 +32,18 @@
   border: var(--hairline) solid var(--border);
   border-radius: var(--radius-panel);
 }
+
+/* With no agent there is no conversation, and so no header. A bare one takes
+   its place, to hold the window's buttons and to move the window by. */
+.blank {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+}
+
+.bar {
+  display: flex;
+  justify-content: flex-end;
+  min-height: calc(var(--control-height) + var(--edge) * 2);
+  padding: var(--edge);
+}

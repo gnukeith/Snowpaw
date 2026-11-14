@@ -8,6 +8,15 @@
   background: var(--hover);
 }
 
+.fill {
+  composes: segmented;
+  flex: 1;
+}
+
+.fill .segment {
+  flex: 1 0 auto;
+}
+
 .segment {
   display: grid;
   flex: none;

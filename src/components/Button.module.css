@@ -82,3 +82,12 @@
 .iconPrimary:disabled {
   background: var(--hover);
 }
+
+.iconQuiet {
+  composes: icon;
+  background: none;
+}
+
+.iconQuiet:hover {
+  background: var(--hover);
+}

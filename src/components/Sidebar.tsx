@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { initials, type Agent } from "../data/agents";
 import { workOf, type AllWork } from "../data/conversation";
 import { Avatar } from "./Avatar";
@@ -13,6 +13,8 @@ interface Props {
   userName: string;
   /** Set when agents could not be written to storage. */
   unsaved: boolean;
+  /** The window's buttons, when the desktop puts them on this side. */
+  windowButtons: ReactNode;
   onSelect: (agent: Agent) => void;
   onCreate: () => void;
   onOpenSettings: () => void;
@@ -32,8 +34,18 @@ export function Sidebar(props: Props) {
 
   return (
     <nav className={styles.sidebar} aria-label="Agents">
-      <div className={styles.tools}>
-        {query !== null && (
+      <div className={styles.tools} data-window-drag>
+        {props.windowButtons}
+        <span className={styles.spacer} />
+        <IconButton
+          icon={query === null ? "search" : "close"}
+          label={query === null ? "Search agents" : "Close search"}
+          onClick={() => setQuery(query === null ? "" : null)}
+        />
+        <IconButton icon="plus" label="New agent" onClick={props.onCreate} />
+      </div>
+      {query !== null && (
+        <div className={styles.search}>
           <Input
             autoFocus
             value={query}
@@ -42,14 +54,8 @@ export function Sidebar(props: Props) {
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => event.key === "Escape" && setQuery(null)}
           />
-        )}
-        <IconButton
-          icon={query === null ? "search" : "close"}
-          label={query === null ? "Search agents" : "Close search"}
-          onClick={() => setQuery(query === null ? "" : null)}
-        />
-        <IconButton icon="plus" label="New agent" onClick={props.onCreate} />
-      </div>
+        </div>
+      )}
 
       {pinned.length > 0 && (
         <div className={styles.pins}>

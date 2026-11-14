@@ -1,6 +1,7 @@
 // Do not open a console window next to the app on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod frame;
 mod qmp;
 mod vm;
 
@@ -162,12 +163,22 @@ fn device_name() -> String {
 fn main() {
     tauri::Builder::default()
         .manage(Computer::default())
+        .setup(|app| {
+            let window = app.get_webview_window("main").ok_or("there is no main window")?;
+            app.manage(frame::open(&window));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             vm_start,
             vm_stop,
             vm_status,
             vm_frame,
-            device_name
+            device_name,
+            frame::window_buttons,
+            frame::window_drag,
+            frame::window_minimize,
+            frame::window_toggle_maximize,
+            frame::window_close
         ])
         .build(tauri::generate_context!())
         .expect("failed to start Snowpaw")

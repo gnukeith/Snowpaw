@@ -10,6 +10,15 @@ const icons = {
   ),
   plus: <path d="M8 3v10M3 8h10" />,
   close: <path d="m4 4 8 8m0-8-8 8" />,
+  minimize: <path d="M4 11.5h8" />,
+  maximize: <rect x="4" y="4" width="8" height="8" rx="1.5" />,
+  /* A panel at the side of a window, for the button that puts it away. */
+  panel: (
+    <>
+      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+      <path d="M10 3v10" />
+    </>
+  ),
   send: <path d="M8 13V3M4 7l4-4 4 4" />,
   pin: <path d="M6 2.5h4l-.5 4 2 2.5h-7l2-2.5zM8 9v4.5" />,
   edit: <path d="m3 13 .5-3L11 2.5 13.5 5 6 12.5z" />,

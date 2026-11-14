@@ -8,6 +8,11 @@
     "allow-vm-stop",
     "allow-vm-status",
     "allow-vm-frame",
-    "allow-device-name"
+    "allow-device-name",
+    "allow-window-buttons",
+    "allow-window-drag",
+    "allow-window-minimize",
+    "allow-window-toggle-maximize",
+    "allow-window-close"
   ]
 }

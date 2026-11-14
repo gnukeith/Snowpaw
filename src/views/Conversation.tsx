@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { Avatar } from "../components/Avatar";
 import { IconButton } from "../components/IconButton";
 import { maxPinned, type Agent } from "../data/agents";
@@ -15,6 +22,8 @@ interface Props {
   /** Whether the agent's panel is showing beside the conversation. */
   panelOpen: boolean;
   onTogglePanel: () => void;
+  /** The window's buttons, when this view is the one in the window's corner. */
+  windowButtons: ReactNode;
   onSend: (text: string) => void;
   onTogglePin: () => void;
   onEdit: () => void;
@@ -66,7 +75,8 @@ export function Conversation(props: Props) {
 
   return (
     <div className={styles.conversation}>
-      <header className={styles.header}>
+      <header className={styles.header} data-window-drag>
+        <span className={styles.balance} />
         <h1 className={styles.heading}>
           <button
             ref={opener}
@@ -91,6 +101,7 @@ export function Conversation(props: Props) {
             onClick={canPin ? onTogglePin : undefined}
           />
           <IconButton icon="edit" label="Edit agent" onClick={onEdit} />
+          {props.windowButtons}
         </div>
       </header>
 

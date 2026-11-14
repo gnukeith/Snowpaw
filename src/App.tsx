@@ -4,6 +4,7 @@ import styles from "./App.module.css";
 import { Button } from "./components/Button";
 import { Empty } from "./components/Empty";
 import { Sidebar } from "./components/Sidebar";
+import { useWindowDrag, WindowButtons } from "./components/WindowButtons";
 import {
   canPin,
   cleanName,
@@ -13,6 +14,7 @@ import {
   type Agent,
 } from "./data/agents";
 import { userMessage, workOf, type AllWork } from "./data/conversation";
+import { parseButtonLayout, type ButtonLayout } from "./data/frame";
 import { loadName, saveName } from "./data/profile";
 import { applyTheme, loadTheme, saveTheme } from "./theme/theme";
 import { AgentEditor } from "./views/AgentEditor";
@@ -35,6 +37,9 @@ export function App() {
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  // The window buttons to draw. None until the Rust side says the window has
+  // no title bar, and none ever where it kept one.
+  const [buttons, setButtons] = useState<ButtonLayout>();
 
   useEffect(() => {
     applyTheme(theme);
@@ -51,6 +56,15 @@ export function App() {
     // Without an answer the fallback below stays, so a failure needs no handling.
     invoke<string>("device_name").then(setDeviceName, () => {});
   }, []);
+
+  useEffect(() => {
+    invoke<string | null>("window_buttons").then(
+      (layout) => layout !== null && setButtons(parseButtonLayout(layout)),
+      () => {},
+    );
+  }, []);
+
+  useWindowDrag(buttons !== undefined);
 
   const defaultName = cleanName(deviceName) || "This computer";
 
@@ -91,6 +105,10 @@ export function App() {
     setEditing(null);
   }
 
+  // The buttons on the far side belong in the window's far corner, which is
+  // the agent's panel while that is open and the conversation otherwise.
+  const farButtons = <WindowButtons buttons={buttons?.end ?? []} />;
+
   return (
     <div className={styles.frame}>
       <Sidebar
@@ -99,6 +117,7 @@ export function App() {
         selected={selected}
         userName={cleanName(name) || defaultName}
         unsaved={unsaved}
+        windowButtons={<WindowButtons buttons={buttons?.start ?? []} />}
         onSelect={(agent) => setSelectedId(agent.id)}
         onCreate={() => setEditing("new")}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -115,6 +134,7 @@ export function App() {
               messages={workOf(work, selected.id).messages}
               canPin={selected.pinned || canPin(agents)}
               panelOpen={panelOpen}
+              windowButtons={!panelOpen && farButtons}
               onTogglePanel={() => setPanelOpen(!panelOpen)}
               onSend={(text) =>
                 setWork((all) => {
@@ -126,11 +146,16 @@ export function App() {
               onEdit={() => setEditing(selected)}
             />
           ) : (
-            <Empty title="No agents yet" hint="Make one, give it a name and a picture, and it lives here.">
-              <Button primary onClick={() => setEditing("new")}>
-                New agent
-              </Button>
-            </Empty>
+            <div className={styles.blank}>
+              <header className={styles.bar} data-window-drag>
+                {farButtons}
+              </header>
+              <Empty title="No agents yet" hint="Make one, give it a name and a picture, and it lives here.">
+                <Button primary onClick={() => setEditing("new")}>
+                  New agent
+                </Button>
+              </Empty>
+            </div>
           )}
         </div>
       </main>
@@ -138,6 +163,7 @@ export function App() {
         <AgentPanel
           agent={selected}
           work={workOf(work, selected.id)}
+          windowButtons={farButtons}
           onClose={() => setPanelOpen(false)}
         />
       )}
