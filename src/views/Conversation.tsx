@@ -125,13 +125,14 @@ export function Conversation(props: Props) {
           const between = !mine && (message.from !== agent.id || message.to !== undefined);
           // As in a group chat, a face goes beside the last of a run of
           // messages from the same sender to the same reader.
-          const lastOfRun =
-            !next ||
-            next.from !== message.from ||
-            next.to !== message.to ||
-            next.at - message.at > quietGap;
+          const sameRun = (other: Message | undefined) =>
+            other !== undefined &&
+            other.from === message.from &&
+            other.to === message.to &&
+            Math.abs(other.at - message.at) <= quietGap;
+          const lastOfRun = !sameRun(next);
           return (
-            <div key={message.id} className={styles.entry}>
+            <div key={message.id} className={sameRun(previous) ? styles.entry : styles.turn}>
               {(!previous || message.at - previous.at > quietGap) && (
                 <time className={styles.time} dateTime={new Date(message.at).toISOString()}>
                   {clock.format(message.at)}

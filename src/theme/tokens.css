@@ -45,6 +45,9 @@
   --panel-min: calc(var(--unit) * 90);
   /* The narrowest window that fits the sidebar, a conversation and a panel. */
   --roomy-width: calc(var(--sidebar-width) + var(--conversation-min) + var(--panel-min));
+  /* Messages keep to a column this wide in the middle of a wide conversation,
+     so that both sides of it stay near each other. */
+  --conversation-width: calc(var(--unit) * 180);
   --settings-nav-width: calc(var(--unit) * 50);
   --setting-width: calc(var(--unit) * 50);
   --dialog-width: calc(var(--unit) * 100);

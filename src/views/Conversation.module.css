@@ -61,15 +61,27 @@
 .messages {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  align-items: center;
   padding: var(--space-4) var(--space-6);
   overflow-y: auto;
 }
 
+/* Each message, in a column down the middle of the conversation. Messages in
+   a run from one sender sit close together. */
 .entry {
   display: flex;
+  flex: none;
   flex-direction: column;
   gap: var(--space-1);
+  width: 100%;
+  max-width: var(--conversation-width);
+  margin-top: var(--space-1);
+}
+
+/* The first message of a run, where the speaker changes: a little air. */
+.turn {
+  composes: entry;
+  margin-top: var(--space-3);
 }
 
 .empty,
@@ -183,7 +195,9 @@
   display: flex;
   align-items: flex-end;
   gap: var(--space-2);
-  margin: 0 var(--space-4) var(--space-4);
+  /* As wide as the column of messages above it, and in line with it. */
+  width: min(100% - var(--space-6) * 2, var(--conversation-width));
+  margin: 0 auto var(--space-4);
   padding: var(--space-1);
   border: var(--hairline) solid var(--border);
   border-radius: var(--radius-bubble);
