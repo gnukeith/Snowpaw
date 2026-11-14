@@ -19,6 +19,8 @@
     "allow-key-exists",
     "allow-key-forget",
     "allow-models-list",
-    "allow-search-test"
+    "allow-search-test",
+    "allow-chat-send",
+    "allow-chat-stop"
   ]
 }

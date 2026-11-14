@@ -4,8 +4,10 @@ use std::io::{self, Read};
 use std::time::Duration;
 use serde::Serialize;
 use serde_json::Value;
+use ureq::config::ConfigBuilder;
 use ureq::http::HeaderValue;
 use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
+use ureq::typestate::AgentScope;
 use url::Url;
 use zeroize::Zeroizing;
 use crate::secrets;
@@ -28,7 +30,7 @@ impl Failure {
         Self { kind, status: None }
     }
 
-    fn at(mut self, status: u16) -> Self {
+    pub(crate) fn at(mut self, status: u16) -> Self {
         self.status = Some(status);
         self
     }
@@ -65,7 +67,7 @@ impl Address {
         self.0.host_str().unwrap_or_default()
     }
 
-    fn endpoint(&self, suffix: &str) -> String {
+    pub(crate) fn endpoint(&self, suffix: &str) -> String {
         let mut url = self.0.clone();
         // Set the path, rather than joining a URL: even a proof beginning with
         // two slashes must stay at the saved origin.
@@ -135,7 +137,9 @@ pub(crate) async fn search_test() -> Result<(), Failure> {
     }).await.map_err(|_| Failure::new("answer"))?
 }
 
-fn agent() -> ureq::Agent {
+/// What every request to a provider has in common. How long to wait is the
+/// caller's to add: a question has an answer in seconds, a reply takes minutes.
+pub(crate) fn settings() -> ConfigBuilder<AgentScope> {
     ureq::Agent::config_builder()
         .tls_config(TlsConfig::builder()
             .provider(TlsProvider::NativeTls)
@@ -144,14 +148,16 @@ fn agent() -> ureq::Agent {
         .max_redirects(0)
         .max_redirects_will_error(false)
         .http_status_as_error(false)
-        .timeout_global(Some(Duration::from_secs(20)))
         // Do not let a process environment variable route provider keys through
         // a proxy. Local providers must also remain local.
         .proxy(None)
-        .build().into()
 }
 
-fn status_result(status: u16) -> Result<(), Failure> {
+fn agent() -> ureq::Agent {
+    settings().timeout_global(Some(Duration::from_secs(20))).build().into()
+}
+
+pub(crate) fn status_result(status: u16) -> Result<(), Failure> {
     let kind = match status {
         200..=299 => return Ok(()),
         300..=399 => "redirect",
@@ -164,7 +170,7 @@ fn status_result(status: u16) -> Result<(), Failure> {
     Err(Failure::new(kind).at(status))
 }
 
-fn transport_error(error: ureq::Error) -> Failure {
+pub(crate) fn transport_error(error: ureq::Error) -> Failure {
     let kind = match error {
         ureq::Error::Timeout(_) => "timeout",
         // native-tls exposes OpenSSL's error stack through its source. Inspect
@@ -190,7 +196,7 @@ fn transport_error(error: ureq::Error) -> Failure {
     Failure::new(kind)
 }
 
-fn secret_header(value: &str) -> Result<HeaderValue, Failure> {
+pub(crate) fn secret_header(value: &str) -> Result<HeaderValue, Failure> {
     let mut header = HeaderValue::from_bytes(value.as_bytes())
         .map_err(|_| Failure::new("address"))?;
     header.set_sensitive(true);
@@ -252,7 +258,7 @@ fn parse_models(body: &[u8], key: Option<&str>) -> Result<Vec<String>, Failure> 
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::io::Write;
     use std::net::TcpListener;
@@ -347,7 +353,9 @@ mod tests {
         assert_eq!(log::STATIC_MAX_LEVEL, log::LevelFilter::Off);
     }
 
-    fn server(responses: Vec<String>) -> (Address, thread::JoinHandle<Vec<String>>) {
+    /// A server that answers one request with each response, in order, and
+    /// hands back what it was sent.
+    pub(crate) fn server(responses: Vec<String>) -> (Address, thread::JoinHandle<Vec<String>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = Address::parse(&format!("http://{}/v1", listener.local_addr().unwrap())).unwrap();
         listener.set_nonblocking(true).unwrap();
@@ -373,7 +381,17 @@ mod tests {
                     bytes.push(byte[0]);
                     assert!(bytes.len() < 16384);
                 }
-                requests.push(String::from_utf8(bytes).unwrap());
+                let mut request = String::from_utf8(bytes).unwrap();
+                // A body is read too: closing on unread bytes would reset the
+                // connection under the client while it reads the response.
+                let length = request.lines()
+                    .find_map(|line| line.to_ascii_lowercase().strip_prefix("content-length: ")?.parse().ok());
+                if let Some(length) = length {
+                    let mut body = vec![0; length];
+                    stream.read_exact(&mut body).unwrap();
+                    request.push_str(&String::from_utf8(body).unwrap());
+                }
+                requests.push(request);
                 // An oversized response can be cut off by the client before we finish.
                 let _ = stream.write_all(response.as_bytes());
             }

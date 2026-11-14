@@ -24,6 +24,8 @@ fn main() {
         "key_forget",
         "models_list",
         "search_test",
+        "chat_send",
+        "chat_stop",
     ]);
     tauri_build::try_build(Attributes::new().app_manifest(commands)).expect("failed to run tauri-build");
 

@@ -1,6 +1,7 @@
 // Do not open a console window next to the app on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod chat;
 mod frame;
 mod providers;
 mod qmp;
@@ -161,8 +162,8 @@ impl Computer {
 }
 
 // Machine paths, QEMU options and control messages are decided in Rust.
-// Provider credentials and requests live in `secrets` and `providers`; their
-// failures carry only a kind and an optional HTTP status, never a secret.
+// Provider credentials and requests live in `secrets`, `providers` and `chat`;
+// their failures carry only a kind and an optional HTTP status, never a secret.
 
 #[tauri::command(async)]
 fn vm_start(app: AppHandle, computer: State<'_, Computer>) -> Result<(), &'static str> {
@@ -219,6 +220,7 @@ fn device_name() -> String {
 fn main() {
     tauri::Builder::default()
         .manage(Computer::default())
+        .manage(chat::Replies::default())
         .setup(|app| {
             let window = app.get_webview_window("main").ok_or("there is no main window")?;
             app.manage(frame::open(&window));
@@ -240,7 +242,9 @@ fn main() {
             secrets::key_exists,
             secrets::key_forget,
             providers::models_list,
-            providers::search_test
+            providers::search_test,
+            chat::chat_send,
+            chat::chat_stop
         ])
         .build(tauri::generate_context!())
         .expect("failed to start Snowpaw")
