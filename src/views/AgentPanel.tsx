@@ -1,17 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { IconButton } from "../components/IconButton";
+import { Segmented } from "../components/Segmented";
 import type { Agent } from "../data/agents";
+import type { Work } from "../data/conversation";
+import { Activity } from "./Activity";
 import styles from "./AgentPanel.module.css";
 import { Computer } from "./Computer";
 
 interface Props {
   agent: Agent;
+  work: Work;
   onClose: () => void;
 }
 
+/* To add a tab, add its name here and its view below. */
+const tabs = ["computer", "activity"] as const;
+
 /** What an agent is doing, beside its conversation. */
-export function AgentPanel({ agent, onClose }: Props) {
+export function AgentPanel({ agent, work, onClose }: Props) {
   const panel = useRef<HTMLElement>(null);
+  const [tab, setTab] = useState<(typeof tabs)[number]>("computer");
   const [full, setFull] = useState(false);
 
   // Escape and the desktop can leave full screen too, so follow what happened
@@ -32,7 +40,8 @@ export function AgentPanel({ agent, onClose }: Props) {
     <aside ref={panel} className={styles.side} aria-label={`What ${agent.name} is doing`}>
       <div className={styles.panel}>
         <header className={styles.header}>
-          <h2 className={styles.title}>Computer</h2>
+          <Segmented label="Show" options={tabs} value={tab} onChange={setTab} />
+          <span className={styles.spacer} />
           <IconButton
             icon={full ? "collapse" : "expand"}
             label={full ? "Leave full screen" : "Full screen"}
@@ -41,7 +50,8 @@ export function AgentPanel({ agent, onClose }: Props) {
           {!full && <IconButton icon="close" label="Close panel" onClick={onClose} />}
         </header>
         <div className={styles.body}>
-          <Computer />
+          {tab === "computer" && <Computer />}
+          {tab === "activity" && <Activity agent={agent} steps={work.steps} />}
         </div>
       </div>
     </aside>

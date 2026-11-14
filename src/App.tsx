@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import styles from "./App.module.css";
 import { Button } from "./components/Button";
+import { Empty } from "./components/Empty";
 import { Sidebar } from "./components/Sidebar";
 import { canPin, cleanName, loadAgents, saveAgents, type Agent } from "./data/agents";
 import { noWork, userMessage, type AllWork } from "./data/conversation";
@@ -111,18 +112,20 @@ export function App() {
               onEdit={() => setEditing(selected)}
             />
           ) : (
-            <div className={styles.empty}>
-              <h1 className={styles.title}>No agents yet</h1>
-              <p className={styles.hint}>Make one, give it a name and a picture, and it lives here.</p>
+            <Empty title="No agents yet" hint="Make one, give it a name and a picture, and it lives here.">
               <Button primary onClick={() => setEditing("new")}>
                 New agent
               </Button>
-            </div>
+            </Empty>
           )}
         </div>
       </main>
       {selected && panelOpen && (
-        <AgentPanel agent={selected} onClose={() => setPanelOpen(false)} />
+        <AgentPanel
+          agent={selected}
+          work={work[selected.id] ?? noWork}
+          onClose={() => setPanelOpen(false)}
+        />
       )}
       {editing && (
         <AgentEditor

@@ -1,6 +1,8 @@
+/* Scrolls sideways sooner than it pushes its neighbours out of view. */
 .segmented {
   display: flex;
-  flex: none;
+  min-width: 0;
+  overflow-x: auto;
   padding: calc(var(--hairline) * 2);
   border-radius: var(--radius-control);
   background: var(--hover);
@@ -8,6 +10,7 @@
 
 .segment {
   display: grid;
+  flex: none;
   place-items: center;
   height: calc(var(--control-height) - var(--hairline) * 4);
   padding: 0 var(--space-3);

@@ -2,7 +2,7 @@
    app can be looked at with something in it. Nothing here is real, and a
    release build does not include this file. */
 import type { Agent } from "../data/agents";
-import type { AllWork, Message } from "../data/conversation";
+import { noWork, type AllWork, type Message, type Step } from "../data/conversation";
 
 const prefix = "sample-";
 
@@ -37,6 +37,14 @@ export function sample(): { agents: Agent[]; work: AllWork } {
     at: start + minutes * minute,
   });
 
+  const step = (minutes: number, kind: Step["kind"], text: string, source?: string): Step => ({
+    id: `${prefix}step-${++count}`,
+    kind,
+    source,
+    text,
+    at: start + minutes * minute,
+  });
+
   const work: AllWork = {
     [engineer.id]: {
       messages: [
@@ -67,8 +75,39 @@ export function sample(): { agents: Agent[]; work: AllWork } {
         ),
         say(95, "user", "nice, thank you"),
       ],
+      steps: [
+        step(
+          1,
+          "thinking",
+          "The failing test is parses_dates_before_1970. I should see the failure myself before changing anything, so I'll run the tests first and then read the parser.",
+        ),
+        step(
+          2,
+          "output",
+          [
+            " FAIL  src/dates/parse.test.ts > parses dates before 1970",
+            "AssertionError: expected null to deeply equal 1969-07-20T00:00:00.000Z",
+            "",
+            " Test Files  1 failed | 6 passed (7)",
+            "      Tests  1 failed | 41 passed (42)",
+          ].join("\n"),
+          "pnpm test",
+        ),
+        step(
+          3,
+          "thinking",
+          "The parser returns null when the timestamp is not above zero. That guard was meant to catch a date that could not be read, which gives NaN, but it also throws away every real date before 1970, because those are negative. Checking for NaN by name keeps what the guard was for and nothing else. Exports use this parser, so people will have seen the bug: I'll ask Marketing about the changelog.",
+        ),
+        step(
+          8,
+          "output",
+          [" Test Files  7 passed (7)", "      Tests  42 passed (42)", "   Duration  1.31s"].join("\n"),
+          "pnpm test",
+        ),
+      ],
     },
     [marketing.id]: {
+      ...noWork,
       messages: [
         say(
           12,
@@ -78,11 +117,13 @@ export function sample(): { agents: Agent[]; work: AllWork } {
       ],
     },
     [inbox.id]: {
+      ...noWork,
       messages: [
         say(30, inbox, "I archived 3 newsletters. Two emails need you: the lease renewal and a note from Dana."),
       ],
     },
     [health.id]: {
+      ...noWork,
       messages: [say(60, health, "You asked me to remind you to stretch. It has been two hours.")],
     },
   };
