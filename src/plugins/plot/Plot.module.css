@@ -1,4 +1,5 @@
 .plot {
+  position: relative;
   margin: 0;
   padding: var(--space-3);
   border: var(--hairline) solid var(--border);
@@ -22,9 +23,25 @@
   width: 100%;
   height: auto;
   overflow: hidden;
-  /* Read back by Plot.tsx, resolved, to lay the drawing out. */
+}
+
+/* Read back by Plot.tsx, resolved, to lay the drawing out, and watched for
+   changes of size. Never seen. */
+.smallProbe,
+.mediumProbe {
+  position: absolute;
+  inset: 0 auto auto 0;
+  padding: var(--unit);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.smallProbe {
   font-size: var(--text-sm);
-  row-gap: var(--unit);
+}
+
+.mediumProbe {
+  font-size: var(--text-md);
 }
 
 .frame { fill: var(--surface); }

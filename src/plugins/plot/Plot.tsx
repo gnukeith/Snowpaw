@@ -19,18 +19,15 @@ interface Sizes {
 }
 
 /** The theme's spacing unit and text sizes, as the browser has worked them
-    out where the plot is drawn. A custom property is read back as written,
-    "calc(...)" and all, so they are read from ordinary properties the
-    stylesheet sets to them: the drawing's font size is the small text, the
-    figure's the medium, and the drawing's row gap, which has no other use on
-    it, is the unit. */
-function sizesAt(svg: SVGSVGElement): Sizes {
-  const drawing = getComputedStyle(svg);
-  const figure = getComputedStyle(svg.parentElement ?? svg);
+    out. A custom property is read back as written, "calc(...)" and all, so
+    they are read from two hidden probes the stylesheet sets in the small and
+    medium text sizes and pads by the unit. */
+function sizesAt(small: Element, medium: Element): Sizes {
+  const smallStyle = getComputedStyle(small);
   return {
-    unit: parseFloat(drawing.rowGap) || 4,
-    small: parseFloat(drawing.fontSize) || 12,
-    medium: parseFloat(figure.fontSize) || 14,
+    unit: parseFloat(smallStyle.paddingTop) || 4,
+    small: parseFloat(smallStyle.fontSize) || 12,
+    medium: parseFloat(getComputedStyle(medium).fontSize) || 14,
   };
 }
 
@@ -39,32 +36,37 @@ function sizesAt(svg: SVGSVGElement): Sizes {
  * the size the theme gives it instead of being scaled with the picture. The
  * room round the plotted area is made from the theme's spacing unit and text
  * sizes, and the left side also grows with the longest number on the
- * vertical axis. Both are read again whenever the plot or its drawing
- * changes size.
+ * vertical axis. Both are read again whenever the drawing changes width or
+ * the theme's sizes change.
  */
 export default function Plot({ source }: BlockProps) {
   const clipId = `plot-${useId()}`;
   const canvas = useRef<SVGSVGElement>(null);
+  const smallProbe = useRef<HTMLSpanElement>(null);
+  const mediumProbe = useRef<HTMLSpanElement>(null);
   // Until it has been measured, a width near that of a message.
   const [width, setWidth] = useState(400);
   const [sizes, setSizes] = useState<Sizes>({ unit: 4, small: 12, medium: 14 });
 
   useLayoutEffect(() => {
     const svg = canvas.current;
-    if (!svg) return;
+    const small = smallProbe.current;
+    const medium = mediumProbe.current;
+    if (!svg || !small || !medium) return;
     const measure = () => {
       // Hidden, it measures nothing: keep the last width instead.
       const shown = Math.round(svg.getBoundingClientRect().width);
       if (shown > 0) setWidth(shown);
-      const next = sizesAt(svg);
+      const next = sizesAt(small, medium);
       setSizes((now) => (now.unit === next.unit && now.small === next.small && now.medium === next.medium ? now : next));
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(svg);
-    // Its heading and legend grow with the theme's text, so a change of
-    // text size is noticed even when the drawing keeps its width.
-    if (svg.parentElement) observer.observe(svg.parentElement);
+    // Each probe's own size follows its text size and the unit, so a change
+    // to either is noticed even when nothing else on the page moves.
+    observer.observe(small);
+    observer.observe(medium);
     return () => observer.disconnect();
   }, []);
 
@@ -103,6 +105,12 @@ export default function Plot({ source }: BlockProps) {
 
   return (
     <figure className={styles.plot}>
+      <span ref={smallProbe} className={styles.smallProbe} aria-hidden="true">
+        0
+      </span>
+      <span ref={mediumProbe} className={styles.mediumProbe} aria-hidden="true">
+        0
+      </span>
       {spec.title && <figcaption className={styles.heading}>{spec.title}</figcaption>}
       <svg ref={canvas} className={styles.canvas} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={description}>
         <title>{description}</title>
