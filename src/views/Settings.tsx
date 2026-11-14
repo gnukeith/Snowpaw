@@ -6,8 +6,10 @@ import { Input } from "../components/Input";
 import { PictureField } from "../components/PictureField";
 import { Row } from "../components/Row";
 import { Segmented } from "../components/Segmented";
+import { Switch } from "../components/Switch";
 import { cleanName, initials, maxNameLength } from "../data/agents";
 import type { Connection } from "../data/connections";
+import { plugins } from "../plugins/index";
 import { modes, type Theme } from "../theme/theme";
 import { Models, Search } from "./Connections";
 import styles from "./Settings.module.css";
@@ -35,6 +37,9 @@ export interface ConnectionsProps {
 }
 
 interface Props extends ProfileProps, AppearanceProps, ConnectionsProps {
+  /** The ids of the plugins that are switched off. */
+  pluginsOff: readonly string[];
+  onPluginsOffChange: (off: string[]) => void;
   /** Shows the first-run steps again. */
   onSetup: () => void;
   /** Present in development builds only. */
@@ -58,6 +63,7 @@ const categories: Category[] = [
     Panel: ({ connections, onConnectionsChange }) => <Models connections={connections} onChange={onConnectionsChange} />,
   },
   { id: "search", label: "Search", Panel: Search },
+  { id: "plugins", label: "Plugins", Panel: Plugins },
 ];
 if (import.meta.env.DEV) categories.push({ id: "developer", label: "Developer", Panel: Developer });
 
@@ -144,6 +150,27 @@ export function Appearance({ theme, onThemeChange }: AppearanceProps) {
           onChange={(event) => onThemeChange({ ...theme, hue: event.target.valueAsNumber })}
         />
       </Row>
+    </>
+  );
+}
+
+function Plugins({ pluginsOff, onPluginsOffChange }: Props) {
+  return (
+    <>
+      <p className={styles.lead}>
+        The parts of Snowpaw you can switch off. One that is on costs nothing until a message needs it.
+      </p>
+      {plugins.map((plugin) => (
+        <Row key={plugin.id} label={plugin.name} hint={plugin.about}>
+          <Switch
+            label={plugin.name}
+            on={!pluginsOff.includes(plugin.id)}
+            onChange={(on) =>
+              onPluginsOffChange(on ? pluginsOff.filter((id) => id !== plugin.id) : [...pluginsOff, plugin.id])
+            }
+          />
+        </Row>
+      ))}
     </>
   );
 }

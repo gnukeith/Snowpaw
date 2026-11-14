@@ -22,6 +22,7 @@ import {
   type Message,
   type TaskDraft,
 } from "./data/conversation";
+import { PluginsOff } from "./components/Markdown";
 import { loadConnections, saveConnections } from "./data/connections";
 import { parseButtonLayout, type ButtonLayout } from "./data/frame";
 import {
@@ -34,6 +35,7 @@ import {
   savePicture,
   saveSetupDone,
 } from "./data/profile";
+import { loadOff, saveOff } from "./plugins/index";
 import { applyTheme, loadTheme, saveTheme, tintWindow } from "./theme/theme";
 import { AgentEditor } from "./views/AgentEditor";
 import { AgentPanel } from "./views/AgentPanel";
@@ -58,6 +60,8 @@ export function App() {
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [connections, setConnections] = useState(loadConnections);
+  // The plugins that are switched off, by id.
+  const [pluginsOff, setPluginsOff] = useState(loadOff);
   // The first-run steps: open until they are finished or skipped, once.
   const [setupOpen, setSetupOpen] = useState(() => !loadSetupDone());
   // The proposed task being changed before it is agreed to, and whose it is.
@@ -89,6 +93,8 @@ export function App() {
   }, [agents, picture, connections]);
 
   useEffect(() => saveName(name), [name]);
+
+  useEffect(() => saveOff(pluginsOff), [pluginsOff]);
 
   useEffect(() => {
     // On the root element, where the tokens that follow from it are worked out.
@@ -168,136 +174,140 @@ export function App() {
   const farButtons = <WindowButtons buttons={buttons?.end ?? []} />;
 
   return (
-    <div className={styles.frame}>
-      <Sidebar
-        agents={agents}
-        work={work}
-        selected={selected}
-        user={user}
-        unsaved={unsaved}
-        windowButtons={buttons?.start.length ? <WindowButtons buttons={buttons.start} /> : null}
-        canPin={canPin(agents)}
-        onTogglePin={togglePin}
-        onEdit={setEditing}
-        onSelect={(agent) => setSelectedId(agent.id)}
-        onCreate={() => setEditing("new")}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
-      <main className={styles.main}>
-        <div className={styles.panel}>
-          {selected ? (
-            <Conversation
-              // A new conversation for each agent, so a message half written
-              // to one is never sent to another.
-              key={selected.id}
-              agent={selected}
-              agents={agents}
-              user={user}
-              messages={workOf(work, selected.id).messages}
-              canPin={selected.pinned || canPin(agents)}
-              panelOpen={panelOpen}
-              windowButtons={!panelOpen && farButtons}
-              onTogglePanel={() => setPanelOpen(!panelOpen)}
-              onSend={(text) =>
-                setWork((all) => {
-                  const mine = workOf(all, selected.id);
-                  return { ...all, [selected.id]: { ...mine, messages: [...mine.messages, userMessage(text)] } };
-                })
-              }
-              onSchedule={(message) =>
-                message.proposal && schedule(selected.id, message, message.proposal.task)
-              }
-              onEditProposal={(message) => setProposing({ agentId: selected.id, message })}
-              onTogglePin={() => togglePin(selected)}
-              onEdit={() => setEditing(selected)}
-            />
-          ) : (
-            <div className={styles.blank}>
-              <header className={styles.bar} data-window-drag>
-                {farButtons}
-              </header>
-              <Empty title="No agents yet" hint="Make one, give it a name and a picture, and it lives here.">
-                <Button primary onClick={() => setEditing("new")}>
-                  New agent
-                </Button>
-              </Empty>
-            </div>
-          )}
-        </div>
-        {selected && panelOpen && (
-          <PanelResizer
-            panel={side}
-            controls={panelId}
-            label={`Width of what ${selected.name} is doing`}
-            onResize={(width) => setPanelWidth(width === undefined ? undefined : Math.max(0, width))}
-          />
-        )}
-      </main>
-      {selected && panelOpen && (
-        <AgentPanel
-          ref={side}
-          id={panelId}
-          agent={selected}
-          work={workOf(work, selected.id)}
-          windowButtons={farButtons}
-          onClose={() => setPanelOpen(false)}
+    <PluginsOff value={pluginsOff}>
+      <div className={styles.frame}>
+        <Sidebar
+          agents={agents}
+          work={work}
+          selected={selected}
+          user={user}
+          unsaved={unsaved}
+          windowButtons={buttons?.start.length ? <WindowButtons buttons={buttons.start} /> : null}
+          canPin={canPin(agents)}
+          onTogglePin={togglePin}
+          onEdit={setEditing}
+          onSelect={(agent) => setSelectedId(agent.id)}
+          onCreate={() => setEditing("new")}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
-      )}
-      {/* Dialogs cover the window's buttons, so they draw their own. */}
-      <WindowFrame value={buttons}>
-        {editing && (
-          <AgentEditor
-            agent={editing === "new" ? undefined : editing}
-            onSave={save}
-            onDelete={remove}
-            onClose={() => setEditing(null)}
+        <main className={styles.main}>
+          <div className={styles.panel}>
+            {selected ? (
+              <Conversation
+                // A new conversation for each agent, so a message half written
+                // to one is never sent to another.
+                key={selected.id}
+                agent={selected}
+                agents={agents}
+                user={user}
+                messages={workOf(work, selected.id).messages}
+                canPin={selected.pinned || canPin(agents)}
+                panelOpen={panelOpen}
+                windowButtons={!panelOpen && farButtons}
+                onTogglePanel={() => setPanelOpen(!panelOpen)}
+                onSend={(text) =>
+                  setWork((all) => {
+                    const mine = workOf(all, selected.id);
+                    return { ...all, [selected.id]: { ...mine, messages: [...mine.messages, userMessage(text)] } };
+                  })
+                }
+                onSchedule={(message) =>
+                  message.proposal && schedule(selected.id, message, message.proposal.task)
+                }
+                onEditProposal={(message) => setProposing({ agentId: selected.id, message })}
+                onTogglePin={() => togglePin(selected)}
+                onEdit={() => setEditing(selected)}
+              />
+            ) : (
+              <div className={styles.blank}>
+                <header className={styles.bar} data-window-drag>
+                  {farButtons}
+                </header>
+                <Empty title="No agents yet" hint="Make one, give it a name and a picture, and it lives here.">
+                  <Button primary onClick={() => setEditing("new")}>
+                    New agent
+                  </Button>
+                </Empty>
+              </div>
+            )}
+          </div>
+          {selected && panelOpen && (
+            <PanelResizer
+              panel={side}
+              controls={panelId}
+              label={`Width of what ${selected.name} is doing`}
+              onResize={(width) => setPanelWidth(width === undefined ? undefined : Math.max(0, width))}
+            />
+          )}
+        </main>
+        {selected && panelOpen && (
+          <AgentPanel
+            ref={side}
+            id={panelId}
+            agent={selected}
+            work={workOf(work, selected.id)}
+            windowButtons={farButtons}
+            onClose={() => setPanelOpen(false)}
           />
         )}
-        {proposing?.message.proposal && (
-          <TaskEditor
-            task={proposing.message.proposal.task}
-            onSchedule={(task) => schedule(proposing.agentId, proposing.message, task)}
-            onClose={() => setProposing(undefined)}
-          />
-        )}
-        {settingsOpen && (
-          <Settings
-            name={name}
-            defaultName={defaultName}
-            onNameChange={setName}
-            picture={picture}
-            onPictureChange={setPicture}
-            theme={theme}
-            onThemeChange={setTheme}
-            connections={connections}
-            onConnectionsChange={setConnections}
-            onSetup={() => {
-              setSettingsOpen(false);
-              setSetupOpen(true);
-            }}
-            developer={developer}
-            onClose={() => setSettingsOpen(false)}
-          />
-        )}
-        {setupOpen && (
-          <Setup
-            name={name}
-            defaultName={defaultName}
-            onNameChange={setName}
-            picture={picture}
-            onPictureChange={setPicture}
-            theme={theme}
-            onThemeChange={setTheme}
-            connections={connections}
-            onConnectionsChange={setConnections}
-            onDone={(makeAgent) => {
-              saveSetupDone();
-              setSetupOpen(false);
-              if (makeAgent) setEditing("new");
-            }}
-          />
-        )}
-      </WindowFrame>
-    </div>
+        {/* Dialogs cover the window's buttons, so they draw their own. */}
+        <WindowFrame value={buttons}>
+          {editing && (
+            <AgentEditor
+              agent={editing === "new" ? undefined : editing}
+              onSave={save}
+              onDelete={remove}
+              onClose={() => setEditing(null)}
+            />
+          )}
+          {proposing?.message.proposal && (
+            <TaskEditor
+              task={proposing.message.proposal.task}
+              onSchedule={(task) => schedule(proposing.agentId, proposing.message, task)}
+              onClose={() => setProposing(undefined)}
+            />
+          )}
+          {settingsOpen && (
+            <Settings
+              name={name}
+              defaultName={defaultName}
+              onNameChange={setName}
+              picture={picture}
+              onPictureChange={setPicture}
+              theme={theme}
+              onThemeChange={setTheme}
+              connections={connections}
+              onConnectionsChange={setConnections}
+              pluginsOff={pluginsOff}
+              onPluginsOffChange={setPluginsOff}
+              onSetup={() => {
+                setSettingsOpen(false);
+                setSetupOpen(true);
+              }}
+              developer={developer}
+              onClose={() => setSettingsOpen(false)}
+            />
+          )}
+          {setupOpen && (
+            <Setup
+              name={name}
+              defaultName={defaultName}
+              onNameChange={setName}
+              picture={picture}
+              onPictureChange={setPicture}
+              theme={theme}
+              onThemeChange={setTheme}
+              connections={connections}
+              onConnectionsChange={setConnections}
+              onDone={(makeAgent) => {
+                saveSetupDone();
+                setSetupOpen(false);
+                if (makeAgent) setEditing("new");
+              }}
+            />
+          )}
+        </WindowFrame>
+      </div>
+    </PluginsOff>
   );
 }

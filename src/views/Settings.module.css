@@ -40,6 +40,13 @@
   overflow-y: auto;
 }
 
+/* What a page is for, above its rows. */
+.lead {
+  max-width: var(--prose-width);
+  padding-bottom: var(--space-4);
+  color: var(--text-muted);
+}
+
 .heading {
   margin-bottom: var(--space-4);
   font-size: var(--text-md);

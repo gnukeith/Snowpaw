@@ -1,0 +1,30 @@
+/* A track with a thumb that sits at the start when off and the end when on.
+   The thumb is a control's height less the gap around it, and travels the
+   track's width less itself and that gap. */
+.switch {
+  flex: none;
+  width: calc(var(--space-6) * 2 - var(--space-2));
+  height: var(--space-6);
+  padding: var(--space-1);
+  border: 0;
+  border-radius: var(--space-6);
+  background: var(--border);
+}
+
+.switch::before {
+  display: block;
+  width: var(--space-4);
+  height: var(--space-4);
+  border-radius: var(--radius-round);
+  background: var(--surface);
+  box-shadow: var(--shadow-raised);
+  content: "";
+}
+
+.switch[aria-checked="true"] {
+  background: var(--accent);
+}
+
+.switch[aria-checked="true"]::before {
+  translate: var(--space-4);
+}
