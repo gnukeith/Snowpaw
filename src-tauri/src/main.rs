@@ -34,7 +34,8 @@ struct Slot {
 }
 
 impl Slot {
-    /// The running machine, if there is one. A machine that died is cleared.
+    /// The machine, if there is one. It keeps its place until it is proven
+    /// gone, so that another can never be started beside it.
     fn running(&mut self) -> Option<Arc<Vm>> {
         if self.vm.as_ref().is_some_and(|vm| vm.has_exited()) {
             self.vm = None;
@@ -75,27 +76,28 @@ impl Computer {
     }
 
     /// Ends the machine and cancels any start under way. With `closing`, also
-    /// refuses every later start.
-    fn stop(&self, closing: bool) {
+    /// refuses every later start. False if the machine could not be proven
+    /// gone: it then keeps its place.
+    fn stop(&self, closing: bool) -> bool {
         let vm = {
             let mut slot = self.lock();
             slot.stops += 1;
             slot.closed |= closing;
-            slot.vm.take()
+            slot.vm.clone()
         };
-        if let Some(vm) = vm {
-            vm.kill();
-        }
+        vm.is_none_or(|vm| self.end(&vm))
     }
 
-    /// Ends `failed` and clears it, leaving alone a newer machine that may
-    /// have replaced it.
-    fn discard(&self, failed: &Arc<Vm>) {
-        failed.kill();
+    /// Ends `vm`, and frees its place once it is proven gone. A newer
+    /// machine that has taken the place since is left alone.
+    fn end(&self, vm: &Arc<Vm>) -> bool {
+        // Not under the lock: this waits for the machine to be gone.
+        let gone = vm.kill();
         let mut slot = self.lock();
-        if slot.vm.as_ref().is_some_and(|current| Arc::ptr_eq(current, failed)) {
+        if gone && slot.vm.as_ref().is_some_and(|current| Arc::ptr_eq(current, vm)) {
             slot.vm = None;
         }
+        gone
     }
 }
 
@@ -132,8 +134,8 @@ fn start(app: &AppHandle, disc: File) -> io::Result<Vm> {
 }
 
 #[tauri::command(async)]
-fn vm_stop(computer: State<Computer>) {
-    computer.stop(false);
+fn vm_stop(computer: State<Computer>) -> Result<(), &'static str> {
+    computer.stop(false).then_some(()).ok_or("The computer could not be stopped. Try again.")
 }
 
 /// Whether the computer is running.
@@ -152,7 +154,7 @@ fn vm_frame(computer: State<Computer>) -> Result<Response, &'static str> {
         // A machine whose screen cannot be read is ended here and now. Its
         // control connection may be out of step, and the webview that would
         // otherwise ask for the stop may already have moved on.
-        computer.discard(&vm);
+        computer.end(&vm);
         "The screen could not be read, so the computer was stopped."
     })
 }
@@ -165,6 +167,8 @@ fn main() {
         .expect("failed to start Snowpaw")
         .run(|app, event| {
             if let RunEvent::Exit = event {
+                // A start that is still under way is not waited for. It
+                // cannot outlive the app: see the top of vm.rs.
                 app.state::<Computer>().stop(true);
             }
         });
@@ -240,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn discarding_a_failed_machine_leaves_its_replacement() {
+    fn ending_a_failed_machine_leaves_its_replacement() {
         if !vm::can_run_here() {
             return;
         }
@@ -252,7 +256,7 @@ mod tests {
         let ticket = computer.begin_start().unwrap().unwrap();
         computer.finish_start(ticket, machine()).unwrap();
 
-        computer.discard(&old);
+        assert!(computer.end(&old));
         assert!(computer.lock().running().is_some_and(|current| !Arc::ptr_eq(&current, &old)));
     }
 }
