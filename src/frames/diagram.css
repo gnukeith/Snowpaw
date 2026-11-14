@@ -1,0 +1,5 @@
+html, body { margin: 0; }
+body { background: var(--background); color: var(--text); font-family: var(--font); }
+#diagram > svg { display: block; max-width: 100%; height: auto; margin-inline: auto; }
+/* A diagram is a still illustration, including when its source requests motion. */
+*, *::before, *::after { animation: none !important; transition: none !important; }

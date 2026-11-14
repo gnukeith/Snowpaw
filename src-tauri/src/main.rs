@@ -220,11 +220,17 @@ fn main() {
     tauri::Builder::default()
         .register_uri_scheme_protocol("frame", |ctx, request| {
             plugin_frame::respond(request, |path| {
-                // iter() returns only exact embedded assets: no SPA fallback,
-                // filesystem reads, symlinks, or app-CSP rewriting.
-                ctx.app_handle().asset_resolver().iter()
-                    .find(|(key, _)| key.as_ref() == path)
-                    .map(|(_, bytes)| bytes.into_owned())
+                // iter() exposes compressed bytes: use it only as an exact
+                // allowlist, then get() to decompress. Never use its dev
+                // filesystem fallback or resolve an unknown SPA path.
+                if tauri::is_dev() {
+                    return None;
+                }
+                let resolver = ctx.app_handle().asset_resolver();
+                if !resolver.iter().any(|(key, _)| key.as_ref() == path) {
+                    return None;
+                }
+                resolver.get(path.to_owned()).map(|asset| asset.bytes)
             })
         })
         .manage(Computer::default())
@@ -233,7 +239,7 @@ fn main() {
             let app_url = if tauri::is_dev() {
                 app.config().build.dev_url.clone().ok_or("there is no dev URL")?
             } else {
-                tauri::Url::parse("tauri://localhost/")?
+                tauri::Url::parse("tauri://localhost")?
             };
             let window = tauri::WebviewWindowBuilder::from_config(app, config)?
                 .on_navigation(move |url| plugin_frame::navigation(url, &app_url))

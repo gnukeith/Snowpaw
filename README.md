@@ -54,3 +54,16 @@ pnpm typecheck
 pnpm test
 (cd src-tauri && cargo test)
 ```
+
+## Diagrams
+
+Mermaid fences render by default; Settings → Plugins → Diagrams switches them
+back to source text. Diagrams run in a sandboxed document with a separate
+network-denying policy. They require embedded assets, so use
+`pnpm tauri build --debug --no-bundle` to try them; the live dev server does
+not supply frame files. To include sample agents in that build, prefix the
+command with `NODE_ENV=development`.
+
+See [the frame boundary](docs/diagram-frame.md) and
+[validation results](docs/diagram-frame-validation.md), including the lack of
+CPU isolation and the tested WebKit version.

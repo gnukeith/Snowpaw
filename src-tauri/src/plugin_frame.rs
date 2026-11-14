@@ -47,7 +47,14 @@ pub fn respond(request: Request<Vec<u8>>, asset: impl FnOnce(&str) -> Option<Vec
 /// CSP does not stop a document navigating itself. WebKit calls this for
 /// subframes too. The main app can reload; frames can only load shipped URLs.
 pub fn navigation(url: &tauri::Url, app_url: &tauri::Url) -> bool {
-    if url.scheme() == app_url.scheme() && url.host_str() == app_url.host_str() && url.port() == app_url.port() && url.username().is_empty() && url.password().is_none() && url.path() == app_url.path() && url.query().is_none() {
+    if url.scheme() == app_url.scheme()
+        && url.host_str() == app_url.host_str()
+        && url.port() == app_url.port()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.path().trim_end_matches('/') == app_url.path().trim_end_matches('/')
+        && url.query().is_none()
+    {
         return true;
     }
     url.as_str().parse().ok().and_then(|uri| asset_path(&uri).map(|p| p.ends_with(".html"))).unwrap_or(false)
@@ -106,6 +113,7 @@ mod tests {
             assert!(!navigation(&tauri::Url::parse(url).unwrap(), &app), "{url}");
         }
         assert!(navigation(&app, &app));
+        assert!(navigation(&tauri::Url::parse("tauri://localhost").unwrap(), &app));
         assert!(navigation(&tauri::Url::parse("frame://localhost/frames/diagram.html").unwrap(), &app));
     }
 }
