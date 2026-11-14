@@ -65,8 +65,10 @@ export default function Plot({ source }: BlockProps) {
     observer.observe(svg);
     // Each probe's own size follows its text size and the unit, so a change
     // to either is noticed even when nothing else on the page moves.
-    observer.observe(small);
-    observer.observe(medium);
+    // Their border box, padding included, so that the unit, which is their
+    // padding, is watched as well as their text size.
+    observer.observe(small, { box: "border-box" });
+    observer.observe(medium, { box: "border-box" });
     return () => observer.disconnect();
   }, []);
 
