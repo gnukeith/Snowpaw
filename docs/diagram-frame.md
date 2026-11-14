@@ -21,8 +21,13 @@ exact embedded file under `/frames/`.
 A development build has no embedded assets, so `pnpm dev` builds the frames
 into `dist/frames` before starting Vite, and the handler reads that one
 directory, refusing any file that resolves outside it once links are
-followed. Frame code changed during a dev session needs the session
-restarted. Release builds contain no filesystem reading at all. The scheme
+followed. This trusts the developer's checkout, as the dev server serving
+the rest of the app already does; it is not confinement against a process
+that can write to it, and a file swapped between the check and the read
+would be served. Frame code changed during a dev session needs the session
+restarted. Release-profile builds contain no filesystem reading at all; a
+`tauri build --debug` contains it but never runs it, since it is not in
+development mode. The scheme
 spelling and guard currently target Linux, which is the platform this app
 builds for.
 

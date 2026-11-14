@@ -45,12 +45,21 @@ pub fn respond(request: Request<Vec<u8>>, asset: impl FnOnce(&str) -> Option<Vec
 }
 
 /// A development build has no embedded files, so its frame files are read
-/// from the one directory `pnpm dev` builds them into. The path has already
-/// been checked to be plain names under `/frames/`; once links are followed,
-/// the file must still be inside that directory.
+/// from the one directory `pnpm dev` builds them into, in the checkout the
+/// binary was built from. This trusts that checkout, as the dev server that
+/// serves the rest of the app already does; it is not confinement against
+/// another process that can write to it.
 #[cfg(debug_assertions)]
 pub fn from_disk(path: &str) -> Option<Vec<u8>> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dist/frames").canonicalize().ok()?;
+    read_inside(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dist/frames"), path)
+}
+
+/// Reads `path`, which has already been checked to be plain names under
+/// `/frames/`, from `root`, refusing anything that is not a regular file
+/// inside `root` once links are followed.
+#[cfg(any(debug_assertions, test))]
+fn read_inside(root: &std::path::Path, path: &str) -> Option<Vec<u8>> {
+    let root = root.canonicalize().ok()?;
     let file = root.join(path.strip_prefix("/frames/")?).canonicalize().ok()?;
     if !file.starts_with(&root) || !file.is_file() {
         return None;
@@ -122,19 +131,28 @@ mod tests {
 
     #[test]
     fn a_development_build_reads_only_inside_its_frame_directory() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dist/frames");
-        let Ok(root) = root.canonicalize() else { return };
-        let outside = root.parent().unwrap().join("snowpaw-frame-test-outside.txt");
-        std::fs::write(&outside, b"outside").unwrap();
-        let link = root.join("snowpaw-frame-test-link.txt");
-        let _ = std::fs::remove_file(&link);
-        std::os::unix::fs::symlink(&outside, &link).unwrap();
-        let read = from_disk("/frames/snowpaw-frame-test-link.txt");
-        std::fs::remove_file(&link).unwrap();
-        std::fs::remove_file(&outside).unwrap();
-        assert_eq!(read, None, "a link out of the frame directory was followed");
-        assert_eq!(from_disk("/frames/no-such-file.html"), None);
-        assert_eq!(from_disk("/elsewhere/diagram.html"), None);
+        // A directory of its own, so the test touches nothing it did not make.
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let place = std::env::temp_dir().join(format!("snowpaw-frame-test-{}-{unique}", std::process::id()));
+        let root = place.join("frames");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("diagram.html"), b"inside").unwrap();
+        std::fs::write(place.join("outside.txt"), b"outside").unwrap();
+        std::os::unix::fs::symlink(place.join("outside.txt"), root.join("link.txt")).unwrap();
+        std::fs::create_dir(root.join("folder")).unwrap();
+        let results = (
+            read_inside(&root, "/frames/diagram.html"),
+            read_inside(&root, "/frames/link.txt"),
+            read_inside(&root, "/frames/folder"),
+            read_inside(&root, "/frames/no-such-file.html"),
+            read_inside(&root, "/elsewhere/diagram.html"),
+        );
+        std::fs::remove_dir_all(&place).unwrap();
+        assert_eq!(results.0.as_deref(), Some(b"inside".as_slice()));
+        assert_eq!(results.1, None, "a link out of the frame directory was followed");
+        assert_eq!(results.2, None, "a directory was read as a file");
+        assert_eq!(results.3, None);
+        assert_eq!(results.4, None);
     }
 
     #[test]
