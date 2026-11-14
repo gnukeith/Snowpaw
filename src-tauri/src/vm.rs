@@ -509,10 +509,12 @@ mod tests {
         fs::File::create(&disc).unwrap().set_len(1024 * 1024).unwrap();
 
         let vm = Vm::spawn(Some(&disc)).unwrap().connect().unwrap();
-        let nodes = lock(&vm.screen).qmp.execute("query-named-block-nodes", json!({})).unwrap();
-        let node = nodes.as_array().unwrap().iter().find(|node| node["node-name"] == "disc").unwrap();
-        assert_eq!(node["image"]["filename"], disc.to_str().unwrap());
-        assert_eq!(node["ro"], true);
+        // What the guest's devices hold: one CD drive with this file in it.
+        let devices = lock(&vm.screen).qmp.execute("query-block", json!({})).unwrap();
+        let [drive] = devices.as_array().unwrap().as_slice() else { panic!("{devices}") };
+        assert!(drive["qdev"].as_str().is_some_and(|device| !device.is_empty()), "{drive}");
+        assert_eq!(drive["inserted"]["image"]["filename"], disc.to_str().unwrap());
+        assert_eq!(drive["inserted"]["ro"], true);
 
         assert!(Vm::spawn(Some(Path::new("relative.iso"))).is_err(), "a relative path is refused");
         let missing = Vm::spawn(Some(&scratch.0.join("missing.iso"))).unwrap();
