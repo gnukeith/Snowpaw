@@ -189,6 +189,13 @@ export function App() {
       change(agent.id, (mine) => endReply(mine, reply.id, whyNoConnection(agent, connections)));
       return;
     }
+    // From here on this agent is this connection's: were it the only one and
+    // later replaced by another, the conversation would not follow unasked.
+    if (!agent.connection) {
+      setAgents((all) =>
+        all.map((other) => (other.id === agent.id ? { ...other, connection: connection.id } : other)),
+      );
+    }
     const writing = ask(connection, turnsOf(messages, agent.id), (answer, thinking) =>
       change(agent.id, (mine) => writeReply(mine, reply.id, answer, thinking)),
     );

@@ -176,7 +176,11 @@ export function Conversation(props: Props) {
                   </p>
                 </div>
               )}
-              {message.failure && <p className={styles.failure}>{message.failure}</p>}
+              {message.failure && (
+                <p className={styles.failure} role="status">
+                  {message.failure}
+                </p>
+              )}
               {message.proposal && (
                 <div className={styles.proposal}>
                   <p className={styles.status}>
