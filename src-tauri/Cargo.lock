@@ -3286,6 +3286,7 @@ dependencies = [
  "gtk",
  "libc",
  "log",
+ "openssl",
  "secret-service",
  "serde",
  "serde_json",

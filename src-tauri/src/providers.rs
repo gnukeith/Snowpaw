@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::error::Error;
 use std::io::{self, Read};
 use std::time::Duration;
 use serde::Serialize;
@@ -156,7 +157,16 @@ fn status_result(status: u16) -> Result<(), Failure> {
 fn transport_error(error: ureq::Error) -> Failure {
     let kind = match error {
         ureq::Error::Timeout(_) => "timeout",
-        ureq::Error::NativeTls(_) | ureq::Error::Tls(_) => "certificate",
+        // native-tls exposes OpenSSL's error stack through its source. Inspect
+        // the fixed reason, never the formatted error or its private data.
+        ureq::Error::NativeTls(error) => {
+            let certificate = error.source()
+                .and_then(|source| source.downcast_ref::<openssl::error::ErrorStack>())
+                .is_some_and(|stack| stack.errors().iter().any(|error| {
+                    error.reason() == Some("certificate verify failed")
+                }));
+            if certificate { "certificate" } else { "answer" }
+        },
         ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => "unreachable",
         ureq::Error::Io(ref error) => match error.kind() {
             io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => "timeout",
@@ -403,6 +413,21 @@ mod tests {
         assert_eq!(list(&address, Some("dummy-key"), None), Err(Failure::new("redirect").at(302)));
         thread.join().unwrap();
         assert_eq!(target.accept().unwrap_err().kind(), io::ErrorKind::WouldBlock);
+    }
+
+    #[test]
+    fn a_plain_http_server_on_a_tls_port_is_not_a_certificate_failure() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("https://{}/models", listener.local_addr().unwrap());
+        let thread = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut hello = [0; 64];
+            stream.read_exact(&mut hello).unwrap();
+            stream.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n").unwrap();
+        });
+        assert_eq!(get(&agent(), &url, None).err(), Some(Failure::new("answer")));
+        thread.join().unwrap();
     }
 
     #[test]
