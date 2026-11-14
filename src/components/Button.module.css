@@ -61,6 +61,14 @@
   pointer-events: none;
 }
 
+/* Cannot be used right now, but can still be pointed at and focused, so its
+   label can say why. */
+.icon[aria-disabled="true"],
+.icon[aria-disabled="true"]:hover {
+  background: var(--hover);
+  color: var(--text-muted);
+}
+
 .iconPrimary {
   composes: icon;
   background: var(--accent);

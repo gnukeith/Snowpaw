@@ -4,7 +4,14 @@ import styles from "./App.module.css";
 import { Button } from "./components/Button";
 import { Empty } from "./components/Empty";
 import { Sidebar } from "./components/Sidebar";
-import { canPin, cleanName, loadAgents, saveAgents, type Agent } from "./data/agents";
+import {
+  canPin,
+  cleanName,
+  loadAgents,
+  parseAgents,
+  saveAgents,
+  type Agent,
+} from "./data/agents";
 import { userMessage, workOf, type AllWork } from "./data/conversation";
 import { loadName, saveName } from "./data/profile";
 import { applyTheme, loadTheme, saveTheme } from "./theme/theme";
@@ -54,7 +61,11 @@ export function App() {
         async load() {
           const { isSample, sample } = await import("./dev/sample");
           const { agents: sampleAgents, work: sampleWork } = sample();
-          setAgents((all) => [...all.filter((agent) => !isSample(agent)), ...sampleAgents]);
+          // Read as if from storage, which releases any pins beyond the limit:
+          // the user's own pins come first, so it is the sample's that go.
+          setAgents((all) =>
+            parseAgents([...all.filter((agent) => !isSample(agent)), ...sampleAgents]),
+          );
           setWork((all) => ({ ...all, ...sampleWork }));
           setSelectedId(sampleAgents[0].id);
         },

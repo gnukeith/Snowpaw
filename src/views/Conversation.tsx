@@ -80,14 +80,15 @@ export function Conversation(props: Props) {
           </button>
         </h1>
         <div className={styles.actions}>
+          {/* At the limit the button stays reachable, so that what it says can be read. */}
           <IconButton
             icon="pin"
             label={
               agent.pinned ? "Unpin" : canPin ? "Pin" : `Only ${maxPinned} agents can be pinned`
             }
             aria-pressed={agent.pinned}
-            disabled={!canPin}
-            onClick={onTogglePin}
+            aria-disabled={!canPin}
+            onClick={canPin ? onTogglePin : undefined}
           />
           <IconButton icon="edit" label="Edit agent" onClick={onEdit} />
         </div>
