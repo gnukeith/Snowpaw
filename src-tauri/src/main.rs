@@ -2,7 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod frame;
+mod providers;
 mod qmp;
+mod secrets;
 mod vm;
 
 use std::fs::File;
@@ -158,10 +160,9 @@ impl Computer {
     }
 }
 
-// The commands below, with those in `frame`, are the whole surface the webview
-// gets. None here takes an argument: paths, QEMU options and control messages
-// are all decided in Rust. The one in `frame` that does takes a colour.
-// Details of a failure go to the log, and the webview gets a fixed sentence.
+// Machine paths, QEMU options and control messages are decided in Rust.
+// Provider credentials and requests live in `secrets` and `providers`; their
+// failures carry only a kind and an optional HTTP status, never a secret.
 
 #[tauri::command(async)]
 fn vm_start(app: AppHandle, computer: State<'_, Computer>) -> Result<(), &'static str> {
@@ -234,7 +235,12 @@ fn main() {
             frame::window_minimize,
             frame::window_toggle_maximize,
             frame::window_close,
-            frame::window_tint
+            frame::window_tint,
+            secrets::key_save,
+            secrets::key_exists,
+            secrets::key_forget,
+            providers::models_list,
+            providers::search_test
         ])
         .build(tauri::generate_context!())
         .expect("failed to start Snowpaw")
