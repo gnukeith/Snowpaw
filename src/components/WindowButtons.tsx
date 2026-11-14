@@ -1,14 +1,19 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect } from "react";
-import type { WindowButton } from "../data/frame";
+import { createContext, useEffect } from "react";
+import type { ButtonLayout, WindowButton } from "../data/frame";
 import { IconButton } from "./IconButton";
 import styles from "./WindowButtons.module.css";
 
 const actions = {
   minimize: { label: "Minimize", command: "window_minimize" },
   maximize: { label: "Maximize or restore", command: "window_toggle_maximize" },
-  close: { label: "Close", command: "window_close" },
+  close: { label: "Close window", command: "window_close" },
 };
+
+/** The window buttons the app draws, for parts of it that are not handed them:
+    a dialog covers the ones on the page. Undefined where the desktop still
+    draws the title bar, and with it the buttons. */
+export const WindowFrame = createContext<ButtonLayout | undefined>(undefined);
 
 /** The window's own buttons, drawn by the app because the window has no title
     bar to carry them. Which ones, and in what order, is the desktop's choice. */
@@ -72,11 +77,20 @@ export function useWindowDrag(enabled: boolean) {
       }
     };
 
+    // A press that ended, here or while the window was not looking, is over.
+    const forget = () => {
+      from = undefined;
+    };
+
     document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", forget);
+    window.addEventListener("blur", forget);
     return () => {
       document.removeEventListener("mousedown", onMouseDown);
       document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", forget);
+      window.removeEventListener("blur", forget);
     };
   }, [enabled]);
 }

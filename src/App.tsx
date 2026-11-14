@@ -4,7 +4,7 @@ import styles from "./App.module.css";
 import { Button } from "./components/Button";
 import { Empty } from "./components/Empty";
 import { Sidebar } from "./components/Sidebar";
-import { useWindowDrag, WindowButtons } from "./components/WindowButtons";
+import { useWindowDrag, WindowButtons, WindowFrame } from "./components/WindowButtons";
 import {
   canPin,
   cleanName,
@@ -167,25 +167,28 @@ export function App() {
           onClose={() => setPanelOpen(false)}
         />
       )}
-      {editing && (
-        <AgentEditor
-          agent={editing === "new" ? undefined : editing}
-          onSave={save}
-          onDelete={remove}
-          onClose={() => setEditing(null)}
-        />
-      )}
-      {settingsOpen && (
-        <Settings
-          name={name}
-          defaultName={defaultName}
-          onNameChange={setName}
-          theme={theme}
-          onThemeChange={setTheme}
-          developer={developer}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
+      {/* Dialogs cover the window's buttons, so they draw their own. */}
+      <WindowFrame value={buttons}>
+        {editing && (
+          <AgentEditor
+            agent={editing === "new" ? undefined : editing}
+            onSave={save}
+            onDelete={remove}
+            onClose={() => setEditing(null)}
+          />
+        )}
+        {settingsOpen && (
+          <Settings
+            name={name}
+            defaultName={defaultName}
+            onNameChange={setName}
+            theme={theme}
+            onThemeChange={setTheme}
+            developer={developer}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
+      </WindowFrame>
     </div>
   );
 }

@@ -42,3 +42,18 @@
   font-size: var(--text-md);
   font-weight: var(--weight-strong);
 }
+
+/* Along the top of the window, not of the dialog. Its padding puts the
+   buttons where the ones behind it are: inside the window's edge, a panel's
+   border and a header's padding. */
+.windowBar {
+  position: fixed;
+  inset: 0 0 auto;
+  display: flex;
+  min-height: var(--control-height);
+  padding: calc(var(--edge) * 2 + var(--hairline));
+}
+
+.spacer {
+  flex: 1;
+}

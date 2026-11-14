@@ -50,7 +50,8 @@ export function AgentPanel({ agent, work, windowButtons, onClose }: Props) {
   return (
     <aside ref={panel} className={styles.side} aria-label={`What ${agent.name} is doing`}>
       <div className={styles.panel}>
-        <header className={styles.header} data-window-drag>
+        {/* Full screen, there is no window to move: the panel is the screen. */}
+        <header className={styles.header} data-window-drag={full ? undefined : ""}>
           {/* Says whose work this is when the conversation is not beside it:
               in a narrow window and in full screen. */}
           <Avatar agent={agent} size="sm" />

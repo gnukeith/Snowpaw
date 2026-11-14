@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useContext, useEffect, useId, useRef, type ReactNode } from "react";
 import styles from "./Dialog.module.css";
 import { IconButton } from "./IconButton";
+import { WindowButtons, WindowFrame } from "./WindowButtons";
 
 interface Props {
   title: string;
@@ -16,6 +17,7 @@ interface Props {
 export function Dialog({ title, onClose, wide, children }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const heading = useId();
+  const frame = useContext(WindowFrame);
 
   // What had focus when the dialog opened. Kept in a ref because development
   // builds run the effect below twice, and the second run would find focus
@@ -50,6 +52,17 @@ export function Dialog({ title, onClose, wide, children }: Props) {
         <IconButton icon="close" label="Close" onClick={() => dialog.current?.close()} />
       </header>
       {children}
+      {/* A dialog puts everything behind it out of reach, the window's
+          buttons and the rows that move it included. So it carries its own,
+          along the top of the window where the others are. Last in the
+          dialog, so that opening it does not put focus here. */}
+      {frame && (
+        <div className={styles.windowBar} data-window-drag>
+          <WindowButtons buttons={frame.start} />
+          <span className={styles.spacer} />
+          <WindowButtons buttons={frame.end} />
+        </div>
+      )}
     </dialog>
   );
 }
