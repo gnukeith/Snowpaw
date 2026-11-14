@@ -6,26 +6,49 @@ import { finite, formatNumber, paths, position, preparePlot, ticks } from "./sca
 import styles from "./Plot.module.css";
 
 const colours = [styles.series1, styles.series2, styles.series3, styles.series4, styles.series5, styles.series6];
-/* The drawing is laid out in the pixels it is shown at, so that its text is
-   drawn at the size the stylesheet gives it instead of being scaled with the
-   picture. These are the room left round the plotted area for tick labels
-   and axis names, in those pixels. The left side also grows with the longest
-   number on the vertical axis, at about the width of a figure in small text. */
-const margin = { left: 32, top: 12, right: 16, bottom: 44 };
-const figureWidth = 7;
 /** Width to height. */
 const aspect = 8 / 5;
+/** How wide a figure is, as a share of its text's size. */
+const figure = 0.6;
 
+/** The theme's sizes the layout is made from, in pixels. */
+interface Sizes {
+  unit: number;
+  small: number;
+  medium: number;
+}
+
+/** Reads the theme's spacing unit and text sizes where the plot is drawn. */
+function sizesAt(element: Element): Sizes {
+  const style = getComputedStyle(element);
+  const read = (token: string, fallback: number) => parseFloat(style.getPropertyValue(token)) || fallback;
+  return { unit: read("--unit", 4), small: read("--text-sm", 12), medium: read("--text-md", 14) };
+}
+
+/**
+ * A plot, laid out in the pixels it is shown at, so that its text is drawn at
+ * the size the theme gives it instead of being scaled with the picture. The
+ * room round the plotted area is made from the theme's spacing unit and text
+ * sizes, and the left side also grows with the longest number on the
+ * vertical axis. Both are read again whenever the plot changes size.
+ */
 export default function Plot({ source }: BlockProps) {
   const clipId = `plot-${useId()}`;
   const canvas = useRef<SVGSVGElement>(null);
   // Until it has been measured, a width near that of a message.
   const [width, setWidth] = useState(400);
+  const [sizes, setSizes] = useState<Sizes>({ unit: 4, small: 12, medium: 14 });
 
   useLayoutEffect(() => {
     const svg = canvas.current;
     if (!svg) return;
-    const measure = () => setWidth(Math.max(margin.left + margin.right + 40, Math.round(svg.getBoundingClientRect().width)));
+    const measure = () => {
+      // Hidden, it measures nothing: keep the last width instead.
+      const shown = Math.round(svg.getBoundingClientRect().width);
+      if (shown > 0) setWidth(shown);
+      const next = sizesAt(svg);
+      setSizes((now) => (now.unit === next.unit && now.small === next.small && now.medium === next.medium ? now : next));
+    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(svg);
@@ -41,12 +64,17 @@ export default function Plot({ source }: BlockProps) {
     const span = y[1] - y[0];
     return ticks(y).map((value) => ({ value, text: formatNumber(value, span) }));
   }, [y]);
-  const left = margin.left + figureWidth * Math.max(1, ...yLabels.map((label) => label.text.length));
+  const { unit, small, medium } = sizes;
+  const longestLabel = Math.max(1, ...yLabels.map((label) => label.text.length));
+  // The axis name, a gap, the numbers, a gap and the tick marks.
+  const left = medium + unit * 2 + longestLabel * small * figure + unit * 3;
+  // The tick marks, a gap, the numbers, a gap and the axis name.
+  const below = unit * 3 + small + unit * 2 + medium + unit;
   const frame = {
     left,
-    top: margin.top,
-    width: Math.max(1, width - left - margin.right),
-    height: Math.max(1, height - margin.top - margin.bottom),
+    top: unit * 3,
+    width: Math.max(1, width - left - unit * 4),
+    height: Math.max(1, height - unit * 3 - below),
   };
   const project = ([x, value]: Point): Point => [
     frame.left + position(x, spec.x) * frame.width,
@@ -76,8 +104,8 @@ export default function Plot({ source }: BlockProps) {
           return (
             <g key={value}>
               <line className={styles.grid} x1={x} y1={frame.top} x2={x} y2={bottom} />
-              <line className={styles.axis} x1={x} y1={bottom} x2={x} y2={bottom + 4} />
-              <text className={styles.xTick} x={x} y={bottom + 18}>{formatNumber(value, xSpan)}</text>
+              <line className={styles.axis} x1={x} y1={bottom} x2={x} y2={bottom + unit} />
+              <text className={styles.xTick} x={x} y={bottom + unit * 3 + small}>{formatNumber(value, xSpan)}</text>
             </g>
           );
         })}
@@ -86,8 +114,8 @@ export default function Plot({ source }: BlockProps) {
           return (
             <g key={value}>
               <line className={styles.grid} x1={frame.left} y1={y} x2={right} y2={y} />
-              <line className={styles.axis} x1={frame.left - 4} y1={y} x2={frame.left} y2={y} />
-              <text className={styles.yTick} x={frame.left - 8} y={y}>{text}</text>
+              <line className={styles.axis} x1={frame.left - unit} y1={y} x2={frame.left} y2={y} />
+              <text className={styles.yTick} x={frame.left - unit * 2} y={y}>{text}</text>
             </g>
           );
         })}
@@ -113,8 +141,8 @@ export default function Plot({ source }: BlockProps) {
             </g>
           ))}
         </g>
-        <text className={styles.xLabel} x={frame.left + frame.width / 2} y={height - 6}>{spec.xlabel ?? "x"}</text>
-        <text className={styles.yLabel} transform={`translate(12 ${frame.top + frame.height / 2}) rotate(-90)`}>{spec.ylabel ?? "y"}</text>
+        <text className={styles.xLabel} x={frame.left + frame.width / 2} y={height - unit}>{spec.xlabel ?? "x"}</text>
+        <text className={styles.yLabel} transform={`translate(${medium} ${frame.top + frame.height / 2}) rotate(-90)`}>{spec.ylabel ?? "y"}</text>
       </svg>
       {legend && (
         <ul className={styles.legend} aria-label="Plot legend">
