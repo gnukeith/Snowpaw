@@ -1,9 +1,11 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import styles from "./App.module.css";
 import { Button } from "./components/Button";
 import { Sidebar } from "./components/Sidebar";
-import { canPin, loadAgents, saveAgents, type Agent } from "./data/agents";
+import { canPin, cleanName, loadAgents, saveAgents, type Agent } from "./data/agents";
 import { userMessage, type Conversations } from "./data/conversation";
+import { loadName, saveName } from "./data/profile";
 import { applyTheme, loadTheme, saveTheme } from "./theme/theme";
 import { AgentEditor } from "./views/AgentEditor";
 import { AgentPanel } from "./views/AgentPanel";
@@ -12,6 +14,9 @@ import { Settings } from "./views/Settings";
 
 export function App() {
   const [theme, setTheme] = useState(loadTheme);
+  // What the user typed for their own name, and what stands in while that is empty.
+  const [name, setName] = useState(loadName);
+  const [deviceName, setDeviceName] = useState("");
   const [agents, setAgents] = useState(loadAgents);
   const [unsaved, setUnsaved] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
@@ -31,6 +36,15 @@ export function App() {
   useEffect(() => {
     setUnsaved(!saveAgents(agents));
   }, [agents]);
+
+  useEffect(() => saveName(name), [name]);
+
+  useEffect(() => {
+    // Without an answer the fallback below stays, so a failure needs no handling.
+    invoke<string>("device_name").then(setDeviceName, () => {});
+  }, []);
+
+  const defaultName = cleanName(deviceName) || "This computer";
 
   const selected = agents.find((agent) => agent.id === selectedId) ?? agents[0];
 
@@ -53,7 +67,7 @@ export function App() {
         agents={agents}
         conversations={conversations}
         selected={selected}
-        userName="You"
+        userName={cleanName(name) || defaultName}
         unsaved={unsaved}
         onSelect={(agent) => setSelectedId(agent.id)}
         onCreate={() => setEditing("new")}
@@ -101,7 +115,14 @@ export function App() {
         />
       )}
       {settingsOpen && (
-        <Settings theme={theme} onThemeChange={setTheme} onClose={() => setSettingsOpen(false)} />
+        <Settings
+          name={name}
+          defaultName={defaultName}
+          onNameChange={setName}
+          theme={theme}
+          onThemeChange={setTheme}
+          onClose={() => setSettingsOpen(false)}
+        />
       )}
     </div>
   );

@@ -1,16 +1,26 @@
 import { useState, type ReactNode } from "react";
 import { Dialog } from "../components/Dialog";
+import { Input } from "../components/Input";
+import { maxNameLength } from "../data/agents";
 import { modes, type Theme } from "../theme/theme";
 import styles from "./Settings.module.css";
 
 interface Props {
+  /** The name the user chose for themselves. Empty if they have not. */
+  name: string;
+  /** What is shown while they have not: this computer's name. */
+  defaultName: string;
+  onNameChange: (name: string) => void;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
   onClose: () => void;
 }
 
 /* To add a category, add an entry here. */
-const categories = [{ id: "appearance", label: "Appearance", Panel: Appearance }] as const;
+const categories = [
+  { id: "general", label: "General", Panel: General },
+  { id: "appearance", label: "Appearance", Panel: Appearance },
+] as const;
 
 export function Settings(props: Props) {
   const [current, setCurrent] = useState<(typeof categories)[number]>(categories[0]);
@@ -36,6 +46,22 @@ export function Settings(props: Props) {
         </section>
       </div>
     </Dialog>
+  );
+}
+
+function General({ name, defaultName, onNameChange }: Props) {
+  return (
+    <Row label="Your name" hint="Left empty, it is this computer's name.">
+      <div className={styles.field}>
+        <Input
+          value={name}
+          placeholder={defaultName}
+          maxLength={maxNameLength}
+          aria-label="Your name"
+          onChange={(event) => onNameChange(event.target.value)}
+        />
+      </div>
+    </Row>
   );
 }
 

@@ -3,5 +3,11 @@
   "identifier": "main",
   "description": "What the app's own webview may ask the Rust side to do. Granted to that one webview, not to its window, so a second webview placed in the same window gets nothing.",
   "webviews": ["main"],
-  "permissions": ["allow-vm-start", "allow-vm-stop", "allow-vm-status", "allow-vm-frame"]
+  "permissions": [
+    "allow-vm-start",
+    "allow-vm-stop",
+    "allow-vm-status",
+    "allow-vm-frame",
+    "allow-device-name"
+  ]
 }

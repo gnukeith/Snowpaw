@@ -150,10 +150,25 @@ fn vm_frame(computer: State<Computer>) -> Result<Response, &'static str> {
     })
 }
 
+/// What this computer calls itself, which the app shows as the user's name
+/// until they choose one. Empty if the system will not say.
+#[tauri::command]
+fn device_name() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|name| name.trim().to_owned())
+        .unwrap_or_default()
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Computer::default())
-        .invoke_handler(tauri::generate_handler![vm_start, vm_stop, vm_status, vm_frame])
+        .invoke_handler(tauri::generate_handler![
+            vm_start,
+            vm_stop,
+            vm_status,
+            vm_frame,
+            device_name
+        ])
         .build(tauri::generate_context!())
         .expect("failed to start Snowpaw")
         .run(|app, event| {

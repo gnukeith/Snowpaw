@@ -65,6 +65,13 @@
   font-size: var(--text-sm);
 }
 
+/* A text box in a row: as wide as the other controls, not as wide as the row. */
+.field {
+  display: flex;
+  flex: none;
+  width: var(--setting-width);
+}
+
 /* Segmented control: real radio inputs, drawn as one pill. */
 .segmented {
   display: flex;
@@ -103,7 +110,7 @@
 /* Hue slider: the track shows every hue the thumb can pick. */
 .hue {
   flex: none;
-  width: calc(var(--unit) * 50);
+  width: var(--setting-width);
   height: var(--space-2);
   margin: 0;
   appearance: none;

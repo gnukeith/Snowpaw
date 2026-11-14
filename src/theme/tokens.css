@@ -43,6 +43,7 @@
   /* The narrowest window that fits the sidebar, a conversation and a panel. */
   --roomy-width: calc(var(--sidebar-width) + var(--conversation-min) + var(--panel-width));
   --settings-nav-width: calc(var(--unit) * 50);
+  --setting-width: calc(var(--unit) * 50);
   --dialog-width: calc(var(--unit) * 100);
   --dialog-height: calc(var(--unit) * 120);
   --content-width: calc(var(--unit) * 160);
