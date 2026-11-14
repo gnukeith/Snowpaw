@@ -10,8 +10,21 @@ import { createContext } from "react";
 export class Budget {
   private claims = new Map<object, number>();
   private total = 0;
+  // All the work done for this message's blocks, kept or refused. It only
+  // grows, so a block that is refused still costs what it took to build.
+  private work = 0;
 
   constructor(readonly limit: number) {}
+
+  /** Whether there is work left to build another block with. */
+  mayWork(): boolean {
+    return this.work < this.limit * 2;
+  }
+
+  /** Counts work done, whether or not what it built is kept. */
+  worked(amount: number) {
+    this.work += amount;
+  }
 
   claim(owner: object, amount: number): boolean {
     const others = this.total - (this.claims.get(owner) ?? 0);

@@ -13,6 +13,17 @@ export const largest = 20;
 /** How many times larger than the text around it anything may be drawn. */
 export const largestScale = 4;
 
+/** The longest formula drawn, in characters. */
+export const longestFormula = 4000;
+
+/* A formula that defines commands of its own can make a few characters
+   build without end: \def\a{x+x+...}\a\a\a... KaTeX caps how many times a
+   command expands, not how much each expansion builds, so such a formula is
+   not drawn. Without them, what a formula builds stays in proportion to its
+   length. */
+export const definesCommands =
+  /\\(?:def|gdef|edef|xdef|let|futurelet|global|newcommand|renewcommand|providecommand|DeclareMathOperator|DeclarePairedDelimiter)(?![a-zA-Z@])/;
+
 /** The MathML attributes that hold a length or a list of them. */
 const sized = new Set([
   "width", "height", "depth", "voffset", "lspace", "rspace", "minsize", "maxsize",

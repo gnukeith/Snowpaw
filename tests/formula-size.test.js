@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import katex from "katex";
-import { checkSizes, largest, sizeOf } from "../src/plugins/math/size.ts";
+import { checkSizes, definesCommands, largest, sizeOf } from "../src/plugins/math/size.ts";
 
 /** The MathML KaTeX builds for a formula, as a tree `checkSizes` can walk.
     The tests have no DOM, so the markup is read with a small tag reader. */
@@ -76,4 +76,13 @@ test("each unit is read, and what cannot be read counts as too large", () => {
   assert.throws(() => checkSizes({ attributes: [{ name: "mathsize", value: "50width" }], children: [inside] }), /more room/);
   assert.throws(() => checkSizes({ attributes: [{ name: "mathsize", value: "50%" }], children: [inside] }), /more room/);
   checkSizes({ attributes: [{ name: "mathsize", value: "70%" }], children: [] });
+});
+
+test("a formula that defines commands of its own is recognised", () => {
+  for (const formula of ["\\def\\a{x}\\a", "\\newcommand{\\R}{\\mathbb{R}}", "\\gdef\\b{y}", "\\let\\c=x", "x \\global\\def\\d{z}"]) {
+    assert.ok(definesCommands.test(formula), formula);
+  }
+  for (const formula of ["\\left( x \\right)", "\\deg x", "\\delta", "\\letter", "\\defined", "a \\leq b"]) {
+    assert.ok(!definesCommands.test(formula), formula);
+  }
 });

@@ -3,7 +3,7 @@ import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { MessageBudget } from "../budget";
 import type { BlockProps } from "../types";
 import styles from "./Formula.module.css";
-import { checkSizes, largest } from "./size.ts";
+import { checkSizes, definesCommands, largest, longestFormula } from "./size.ts";
 
 /* The formula is written by an agent that may have read anything, so KaTeX
    is held to its safe settings: no links, images or raw HTML (`trust`), and
@@ -15,6 +15,7 @@ const limits = { trust: false, maxExpand: 1000, maxSize: largest, throwOnError: 
     security policy does not let a message carry. */
 /** The most elements one formula may build. */
 const mostElements = 3000;
+
 
 export default function Formula({ source, inline }: BlockProps) {
   const place = useRef<HTMLSpanElement>(null);
@@ -28,12 +29,16 @@ export default function Formula({ source, inline }: BlockProps) {
   useLayoutEffect(() => {
     if (!place.current) return;
     try {
+      if (source.length > longestFormula) throw new Error("This formula is too long to draw.");
+      if (definesCommands.test(source)) throw new Error("This formula defines commands of its own, which are not drawn.");
+      if (budget && !budget.mayWork()) throw new Error("This message has more mathematics in it than it can show.");
       // Built away from the page and checked before any of it is shown.
       // KaTeX makes the elements itself, so no HTML text is ever parsed.
       const built = document.createElement("span");
       katex.render(source, built, { ...limits, output: "mathml", displayMode: !inline });
-      checkSizes(built);
       const elements = built.querySelectorAll("*").length;
+      budget?.worked(elements);
+      checkSizes(built);
       if (elements > mostElements || (budget && !budget.claim(owner, elements))) {
         throw new Error("This message has more mathematics in it than it can show.");
       }
