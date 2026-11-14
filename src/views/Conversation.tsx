@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Avatar } from "../components/Avatar";
 import { IconButton } from "../components/IconButton";
+import { Markdown } from "../components/Markdown";
 import { initials, maxPinned, type Agent } from "../data/agents";
 import { Button } from "../components/Button";
 import { isMoment, taskLine, type Message } from "../data/conversation";
@@ -152,12 +153,12 @@ export function Conversation(props: Props) {
                       <Avatar who={agents.find((other) => other.id === message.from) ?? {}} size="md" />
                     ))}
                 </span>
-                <p className={mine ? styles.mine : between ? styles.between : styles.theirs}>
+                <div className={mine ? styles.mine : between ? styles.between : styles.theirs}>
                   {/* Who wrote it, for those who cannot see which side it is
                       on. Between agents, the line above already says. */}
                   {!between && <span className={styles.unseen}>{mine ? "You" : agent.name}: </span>}
-                  {message.text}
-                </p>
+                  <Markdown text={message.text} />
+                </div>
               </div>
               {message.proposal && (
                 <div className={styles.proposal}>

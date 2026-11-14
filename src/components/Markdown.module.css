@@ -1,0 +1,92 @@
+/* A message's text. Paragraphs, lists and blocks stack with one gap between
+   them, and a line break typed in a paragraph is kept. */
+.markdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.markdown p {
+  white-space: pre-wrap;
+}
+
+.markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-strong);
+}
+
+.markdown :is(ul, ol) {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding-inline-start: var(--space-6);
+}
+
+.markdown blockquote {
+  margin: 0;
+  padding-inline-start: var(--space-3);
+  border-inline-start: calc(var(--hairline) * 2) solid var(--tint);
+}
+
+.markdown hr {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-top: var(--hairline) solid var(--tint);
+}
+
+/* Code in a line of text, washed with whatever colour the text around it is,
+   so it reads in a message of any colour. */
+.code {
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-nested);
+  background: var(--tint);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+/* Code on lines of its own. A line too long for the message scrolls sideways. */
+.block {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow-x: auto;
+  border-radius: var(--radius-control);
+  background: var(--tint);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre;
+}
+
+/* Why a block could not be drawn, under the block as it was written. */
+.why {
+  font-size: var(--text-sm);
+  opacity: var(--faint);
+}
+
+.link {
+  text-decoration: underline;
+}
+
+/* Where a link goes, and what stands in for a picture. */
+.address {
+  font-size: var(--text-sm);
+  opacity: var(--faint);
+}
+
+/* A table wider than its message scrolls sideways inside it. */
+.wide {
+  overflow-x: auto;
+}
+
+.wide table {
+  border-collapse: collapse;
+}
+
+.wide :is(th, td) {
+  padding: var(--space-1) var(--space-2);
+  border: var(--hairline) solid var(--tint);
+  text-align: start;
+}

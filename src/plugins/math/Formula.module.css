@@ -1,0 +1,13 @@
+/* The browser's own math layout, in the desktop's math font where it has one. */
+.inline math,
+.display math {
+  font-family: "STIX Two Math", "Noto Sans Math", "Latin Modern Math", math;
+}
+
+/* A formula on a line of its own. One too wide for its message scrolls
+   sideways: the browser does not break a formula across lines. */
+.display {
+  display: block;
+  overflow-x: auto;
+  padding: var(--space-1) 0;
+}

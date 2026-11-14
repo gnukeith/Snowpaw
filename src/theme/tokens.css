@@ -97,6 +97,11 @@
   /* Lines a change added and removed. */
   --added: color-mix(in oklch, var(--success) 16%, transparent);
   --removed: color-mix(in oklch, var(--danger) 16%, transparent);
+  /* A wash of whatever colour the text is, and how far text that matters
+     less is faded, for use inside a message, which may be light on dark or
+     dark on light. */
+  --tint: color-mix(in oklch, currentColor 12%, transparent);
+  --faint: 0.7;
   /* Dims the app behind a dialog. */
   --scrim: color-mix(in oklch, black 45%, transparent);
   --hover: color-mix(in oklch, var(--text) 6%, transparent);
