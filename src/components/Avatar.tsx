@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Agent } from "../data/agents";
-import { paintPicture } from "../data/picture";
+import { decodePicture } from "../data/picture";
 import styles from "./Avatar.module.css";
 
 interface Props {
@@ -17,9 +17,24 @@ export function Avatar({ agent, size }: Props) {
   const [broken, setBroken] = useState<string>();
 
   useEffect(() => {
-    if (!picture || !canvas.current) return;
+    if (!picture) return;
     let live = true;
-    paintPicture(canvas.current, picture).catch(() => live && setBroken(picture));
+    // `atob` throws on text that is not base64, so decoding starts inside the chain.
+    Promise.resolve(picture)
+      .then(decodePicture)
+      .then(
+        (image) => {
+          // By now the avatar may be showing another picture, or be gone. Only
+          // the picture that is still wanted is drawn.
+          if (live && canvas.current) {
+            canvas.current.width = image.width;
+            canvas.current.height = image.height;
+            canvas.current.getContext("2d")?.drawImage(image, 0, 0);
+          }
+          image.close();
+        },
+        () => live && setBroken(picture),
+      );
     return () => {
       live = false;
     };

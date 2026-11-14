@@ -37,19 +37,13 @@ export async function toPicture(file: Blob): Promise<string> {
 }
 
 /**
- * Draws a stored picture onto a canvas. The app's content security policy
- * allows images from the app itself only, so a picture is decoded from its
- * bytes here and never handed to an `<img>`.
+ * Decodes a stored picture, for drawing on a canvas. The app's content
+ * security policy allows images from the app itself only, so a picture is
+ * decoded from its bytes here and never handed to an `<img>`. The caller
+ * closes the bitmap.
  */
-export async function paintPicture(canvas: HTMLCanvasElement, picture: string): Promise<void> {
+export function decodePicture(picture: string): Promise<ImageBitmap> {
   const binary = atob(picture.slice(picture.indexOf(",") + 1));
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  const image = await createImageBitmap(new Blob([bytes]));
-  try {
-    canvas.width = image.width;
-    canvas.height = image.height;
-    canvas.getContext("2d")?.drawImage(image, 0, 0);
-  } finally {
-    image.close();
-  }
+  return createImageBitmap(new Blob([bytes]));
 }

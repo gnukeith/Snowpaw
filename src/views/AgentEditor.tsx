@@ -22,25 +22,44 @@ export function AgentEditor({ agent, onSave, onDelete, onClose }: Props) {
   // Deleting takes two presses: the first only asks.
   const [confirming, setConfirming] = useState(false);
   const file = useRef<HTMLInputElement>(null);
+  // Goes up with every change to the picture. A file takes a moment to turn
+  // into a picture, and one that finishes after a later change is dropped.
+  const change = useRef(0);
+  // True while the latest file is being turned into a picture.
+  const [working, setWorking] = useState(false);
 
   async function choose(event: ChangeEvent<HTMLInputElement>) {
     const chosen = event.target.files?.[0];
     // Cleared so that choosing the same file again still counts as a change.
     event.target.value = "";
     if (!chosen) return;
+    const mine = ++change.current;
+    setWorking(true);
+    let picture: string | undefined;
     try {
-      const picture = await toPicture(chosen);
-      setDraft((current) => ({ ...current, picture }));
-      setError(null);
+      picture = await toPicture(chosen);
     } catch {
-      setError("That file could not be used as a picture.");
+      // Reported below, if this is still the latest change.
     }
+    if (mine !== change.current) return;
+    setWorking(false);
+    setError(picture ? null : "That file could not be used as a picture.");
+    if (picture) setDraft((current) => ({ ...current, picture }));
   }
+
+  function removePicture() {
+    change.current += 1;
+    setWorking(false);
+    setDraft((current) => ({ ...current, picture: undefined }));
+  }
+
+  // Saving waits for a picture that is on its way, so it is not left behind.
+  const name = cleanName(draft.name);
+  const ready = name !== "" && !working;
 
   function save(event: FormEvent) {
     event.preventDefault();
-    const name = cleanName(draft.name);
-    if (name) onSave({ ...draft, name });
+    if (ready) onSave({ ...draft, name });
   }
 
   return (
@@ -51,7 +70,7 @@ export function AgentEditor({ agent, onSave, onDelete, onClose }: Props) {
           <div className={styles.pictureActions}>
             <Button onClick={() => file.current?.click()}>Choose picture</Button>
             {draft.picture && (
-              <Button onClick={() => setDraft({ ...draft, picture: undefined })}>Remove</Button>
+              <Button onClick={removePicture}>Remove</Button>
             )}
           </div>
           <input ref={file} type="file" accept="image/*" hidden onChange={choose} />
@@ -79,7 +98,7 @@ export function AgentEditor({ agent, onSave, onDelete, onClose }: Props) {
             </Button>
           )}
           <span className={styles.spacer} />
-          <Button primary type="submit" disabled={!cleanName(draft.name)}>
+          <Button primary type="submit" disabled={!ready}>
             {agent ? "Save" : "Create"}
           </Button>
         </footer>
