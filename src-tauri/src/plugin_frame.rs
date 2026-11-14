@@ -44,6 +44,20 @@ pub fn respond(request: Request<Vec<u8>>, asset: impl FnOnce(&str) -> Option<Vec
         .body(body).expect("fixed frame response headers are valid")
 }
 
+/// A development build has no embedded files, so its frame files are read
+/// from the one directory `pnpm dev` builds them into. The path has already
+/// been checked to be plain names under `/frames/`; once links are followed,
+/// the file must still be inside that directory.
+#[cfg(debug_assertions)]
+pub fn from_disk(path: &str) -> Option<Vec<u8>> {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dist/frames").canonicalize().ok()?;
+    let file = root.join(path.strip_prefix("/frames/")?).canonicalize().ok()?;
+    if !file.starts_with(&root) || !file.is_file() {
+        return None;
+    }
+    std::fs::read(file).ok()
+}
+
 /// CSP does not stop a document navigating itself. WebKit calls this for
 /// subframes too. The main app can reload; frames can only load shipped URLs.
 pub fn navigation(url: &tauri::Url, app_url: &tauri::Url) -> bool {
@@ -104,6 +118,23 @@ mod tests {
         // There is no runtime filesystem resolver, so a symlink cannot be
         // followed. Even a syntactically valid path needs an embedded entry.
         assert_eq!(respond(request("frame://localhost/frames/symlink.html"), |_| None).status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn a_development_build_reads_only_inside_its_frame_directory() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../dist/frames");
+        let Ok(root) = root.canonicalize() else { return };
+        let outside = root.parent().unwrap().join("snowpaw-frame-test-outside.txt");
+        std::fs::write(&outside, b"outside").unwrap();
+        let link = root.join("snowpaw-frame-test-link.txt");
+        let _ = std::fs::remove_file(&link);
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let read = from_disk("/frames/snowpaw-frame-test-link.txt");
+        std::fs::remove_file(&link).unwrap();
+        std::fs::remove_file(&outside).unwrap();
+        assert_eq!(read, None, "a link out of the frame directory was followed");
+        assert_eq!(from_disk("/frames/no-such-file.html"), None);
+        assert_eq!(from_disk("/elsewhere/diagram.html"), None);
     }
 
     #[test]

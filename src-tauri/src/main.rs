@@ -223,8 +223,9 @@ fn main() {
                 // iter() exposes compressed bytes: use it only as an exact
                 // allowlist, then get() to decompress. Never use its dev
                 // filesystem fallback or resolve an unknown SPA path.
+                #[cfg(debug_assertions)]
                 if tauri::is_dev() {
-                    return None;
+                    return plugin_frame::from_disk(path);
                 }
                 let resolver = ctx.app_handle().asset_resolver();
                 if !resolver.iter().any(|(key, _)| key.as_ref() == path) {
