@@ -5,7 +5,7 @@ import styles from "./Computer.module.css";
 
 /** Time between screen captures. The Rust side enforces its own minimum too. */
 const frameInterval = 500;
-/** Time between looks at whether the machine is off, starting or on. */
+/** Time from one answer about the machine's state to the next question. */
 const statusInterval = 1000;
 
 /**
@@ -28,29 +28,26 @@ export function Computer() {
   const action = useRef<HTMLButtonElement>(null);
   // Set when Start or Stop was pressed, so focus can follow to the button that replaces it.
   const refocus = useRef(false);
-  // Goes up with every look at the machine and every start or stop. An
-  // answer is used only if nothing has happened since it was asked for, so
-  // one that arrives late can never replace something newer.
-  const latest = useRef(0);
-
-  async function look() {
-    const mine = ++latest.current;
-    const now = await ask();
-    if (mine === latest.current) setPower(now);
-  }
 
   // The machine can change without this view doing anything: a start asked
   // for before the view was opened, a machine that ends by itself. So no
-  // answer is taken as settled: the view keeps looking, except while it is
-  // itself waiting for a start, a stop or a check to finish.
+  // answer is taken as settled: the view keeps asking, one question at a
+  // time, except while it is itself waiting for a start or a stop to finish.
   useEffect(() => {
     if (busy) return;
-    look();
-    const timer = setInterval(look, statusInterval);
+    let live = true;
+    (async () => {
+      while (live) {
+        const now = await ask();
+        // An answer asked for before a start or stop began, or before the
+        // view was left, is out of date by the time it arrives.
+        if (!live) return;
+        setPower(now);
+        await new Promise((resolve) => setTimeout(resolve, statusInterval));
+      }
+    })();
     return () => {
-      clearInterval(timer);
-      // Whatever is still on its way is out of date, or for a view that is gone.
-      latest.current++;
+      live = false;
     };
   }, [busy]);
 
@@ -67,12 +64,9 @@ export function Computer() {
           try {
             png = await invoke<ArrayBuffer>("vm_frame");
           } catch (reason) {
-            // The Rust side ends a machine whose screen it cannot read. Ask
-            // whether it managed to, and do not claim more than the answer.
-            if (live) {
-              setError(String(reason));
-              await look();
-            }
+            // The Rust side ends a machine whose screen it cannot read. Whether
+            // it managed to shows in the next answer about the machine's state.
+            if (live) setError(String(reason));
             return;
           }
           // A frame that arrives but cannot be drawn is this side's problem.
@@ -108,29 +102,19 @@ export function Computer() {
   async function turn(on: boolean) {
     setBusy(true);
     setError(null);
-    // Answers asked for before this start or stop began, or before it ended,
-    // are out of date.
-    latest.current++;
     if (on) setPower("starting");
     try {
       await invoke(on ? "vm_start" : "vm_stop");
-      latest.current++;
       refocus.current = true;
       setPower(on ? "on" : "off");
     } catch (reason) {
+      // A start or stop that failed can still leave a machine there. What
+      // is shown stays until the next answer about the machine's state,
+      // which is asked for as soon as this is no longer busy.
       setError(String(reason));
-      // A start or stop that failed can still leave a machine there. Ask.
-      await look();
     } finally {
       setBusy(false);
     }
-  }
-
-  // One check at a time: the buttons are off until the answer is in.
-  async function check() {
-    setBusy(true);
-    await look();
-    setBusy(false);
   }
 
   const message =
@@ -190,14 +174,9 @@ export function Computer() {
     return (
       <div className={styles.off}>
         <h1 className={styles.title}>The computer's state could not be read</h1>
-        <p className={styles.hint}>It may be running.</p>
+        <p className={styles.hint}>It may be running. Snowpaw keeps asking.</p>
         {problem}
-        <div className={styles.actions}>
-          <Button disabled={busy} onClick={check}>
-            Check again
-          </Button>
-          {stop}
-        </div>
+        {stop}
       </div>
     );
   }
