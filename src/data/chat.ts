@@ -11,7 +11,9 @@ import type { Message } from "./conversation.ts";
  * The connection whose model answers for an agent: the one chosen for it, or
  * the only one there is. With several and none chosen there is none, and none
  * if the chosen one has gone: which server reads a conversation is never a
- * guess.
+ * guess. The app holds an agent to a connection from the first message sent
+ * through it, so "the only one there is" is only ever the answer for an agent
+ * that has sent nothing yet.
  */
 export function connectionFor(agent: Agent, connections: Connection[]): Connection | undefined {
   const ready = connections.filter((connection) => connection.model);
@@ -65,6 +67,10 @@ export interface Reply {
 
 type Piece = { kind: "thinking" | "text"; text: string } | { kind: "end"; failure?: Failure };
 
+/** How long the last piece may take to arrive once the call itself has been
+    answered. One that has not come by then never will. */
+const stragglers = 5_000;
+
 /**
  * Asks a connection's model to answer a conversation. `onProgress` is given
  * all of the answer and all of the reasoning so far, at most once for each
@@ -112,7 +118,12 @@ export function ask(
     turns,
     needsKey: presetOf(connection.preset).key === "needed",
     pieces,
-  }).catch((error) => end(error ?? {}));
+  }).then(
+    // The call is answered once the last piece has been sent. A piece lost
+    // on the way would leave that one waiting behind the gap for ever.
+    () => setTimeout(() => end({ kind: "interrupted" }), stragglers),
+    (error) => end(error ?? {}),
+  );
   return {
     done,
     stop() {

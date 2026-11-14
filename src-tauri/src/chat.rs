@@ -2,7 +2,7 @@
 //! saved connection, with that connection's key if it has one, and what the
 //! model writes is handed to the page piece by piece as it arrives.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -25,6 +25,8 @@ const LINE_LIMIT: usize = 1024 * 1024;
 /// generous. Stopping a reply does not wait for it.
 const QUIET: Duration = Duration::from_secs(900);
 const CONNECT: Duration = Duration::from_secs(20);
+/// How many stops are remembered for replies that have not begun.
+const EARLY_STOPS: usize = 64;
 
 /// One side's part of a conversation, as the model is sent it.
 #[derive(Deserialize, Serialize)]
@@ -67,19 +69,32 @@ struct Halt {
 
 /// The replies being written, each with what stops it.
 #[derive(Default)]
-pub(crate) struct Replies(Mutex<HashMap<String, Halt>>);
+pub(crate) struct Replies(Mutex<Places>);
+
+#[derive(Default)]
+struct Places {
+    writing: HashMap<String, Halt>,
+    /// Names that were stopped before a reply began under them. A stop and
+    /// the send it is for travel separately, and the stop can come first.
+    stopped: VecDeque<String>,
+}
 
 impl Replies {
-    fn lock(&self) -> MutexGuard<'_, HashMap<String, Halt>> {
+    fn lock(&self) -> MutexGuard<'_, Places> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Takes a place for a reply under the name the page gave it. None if a
-    /// reply is already being written under that name.
-    fn begin(&self, request: &str) -> Option<Writing<'_>> {
-        let mut replies = self.lock();
-        if replies.contains_key(request) {
-            return None;
+    /// Takes a place for a reply under the name the page gave it. Refused if
+    /// a reply is already being written under that name, or if the name was
+    /// stopped before this.
+    fn begin(&self, request: &str) -> Result<Writing<'_>, Failure> {
+        let mut places = self.lock();
+        if let Some(early) = places.stopped.iter().position(|name| name == request) {
+            places.stopped.remove(early);
+            return Err(Failure::new("stopped"));
+        }
+        if places.writing.contains_key(request) {
+            return Err(Failure::new("address"));
         }
         // No limit on the whole exchange: a long answer is not a failure.
         // Each wait within it has one.
@@ -90,18 +105,26 @@ impl Replies {
             .timeout_per_write(Some(QUIET))
             .build().into();
         let halt = Halt { stop: Arc::new(AtomicBool::new(false)), agent };
-        replies.insert(request.to_owned(), halt.clone());
-        Some(Writing { replies: self, request: request.to_owned(), halt })
+        places.writing.insert(request.to_owned(), halt.clone());
+        Ok(Writing { replies: self, request: request.to_owned(), halt })
     }
 
-    /// Stops the reply under that name, now. One that has ended, or that
-    /// never began, is nothing to stop.
+    /// Stops the reply under that name, now. If none is being written, the
+    /// name is remembered, so that a reply which begins under it later does
+    /// not. A name is used once, so one remembered for a reply that had
+    /// already ended stops nothing; only so many are kept.
     fn stop(&self, request: &str) {
-        let halt = self.lock().get(request).cloned();
-        if let Some(halt) = halt {
-            halt.stop.store(true, Ordering::Relaxed);
-            halt.agent.shutdown();
-        }
+        let mut places = self.lock();
+        let Some(halt) = places.writing.get(request).cloned() else {
+            if places.stopped.len() == EARLY_STOPS {
+                places.stopped.pop_front();
+            }
+            places.stopped.push_back(request.to_owned());
+            return;
+        };
+        drop(places);
+        halt.stop.store(true, Ordering::Relaxed);
+        halt.agent.shutdown();
     }
 }
 
@@ -114,7 +137,7 @@ struct Writing<'a> {
 
 impl Drop for Writing<'_> {
     fn drop(&mut self) {
-        self.replies.lock().remove(&self.request);
+        self.replies.lock().writing.remove(&self.request);
     }
 }
 
@@ -140,7 +163,7 @@ pub(crate) async fn chat_send(
         validate_id(&id)?;
         let address = Address::parse(&address)?;
         validate_model(&model)?;
-        let writing = replies.begin(&request).ok_or_else(|| Failure::new("address"))?;
+        let writing = replies.begin(&request)?;
         let key = secrets::lookup(&id, &address.origin()).await?;
         // As with the list of models: a provider that wants a key is not
         // sent a conversation without one.
@@ -153,16 +176,22 @@ pub(crate) async fn chat_send(
             ask(&halt, &address, key, &model, &turns, &mut |piece| page.send(piece).is_ok())
         }).await.map_err(|_| Failure::new("answer"))?
     }.await;
-    // Nobody is left to tell if the page has gone.
-    let _ = pieces.send(Piece::End { failure: outcome.err() });
-    Ok(())
+    // A piece that could not be handed over leaves a gap that the pieces
+    // after it wait behind for ever, the last one too. Then this command's
+    // own answer is the only word left on how the reply ended.
+    if outcome.as_ref().is_err_and(|failure| failure.kind == "unheard") {
+        return Err(Failure::new("interrupted"));
+    }
+    pieces.send(Piece::End { failure: outcome.err() }).map_err(|_| Failure::new("interrupted"))
 }
 
 /// Stops a reply by closing its connection, which is also what tells the
 /// server to stop writing it.
 #[tauri::command]
 pub(crate) fn chat_stop(replies: State<'_, Replies>, request: String) {
-    replies.stop(&request);
+    if validate_id(&request).is_ok() {
+        replies.stop(&request);
+    }
 }
 
 /// A conversation is turned down for more reasons than a key is.
@@ -247,40 +276,85 @@ fn next_line(stream: &mut impl BufRead, line: &mut Vec<u8>) -> Result<u64, Failu
     Ok(read as u64)
 }
 
-/// Keeps the connection's key out of a reply. A server may echo it, and a key
-/// never goes to the page. Text passes through as it arrives, less any ending
-/// that could be the start of the key: that waits for what follows it.
-struct Sieve<'a> {
-    key: Option<&'a str>,
-    held: String,
+/// Keeps the connection's key out of what a reply says. A server may repeat
+/// the key it was sent, and a key never goes to the page. Text passes through
+/// as it arrives, less any ending that could be the start of the key: that
+/// waits for what follows it. Where the key was, a line break is left, which
+/// no key can contain, so that what came before and after cannot join into
+/// one.
+///
+/// This is for a key repeated as it is, within the reasoning or within the
+/// answer. A server set on passing its key along could cut it up between the
+/// two, or disguise it, and nothing read here could tell.
+struct Sieve {
+    /// Empty when the connection has no key: everything passes.
+    key: Vec<u8>,
+    /// For each length of the key's start that the text read so far ends
+    /// with, the next shorter one it also ends with. Looking back through
+    /// this instead of through the text is what keeps the work in step with
+    /// the length of the reply, whatever the reply is made of.
+    back: Vec<usize>,
+    /// The end of the text so far that is a start of the key.
+    held: VecDeque<u8>,
 }
 
-impl<'a> Sieve<'a> {
-    fn new(key: Option<&'a str>) -> Self {
-        Self { key, held: String::new() }
+impl Sieve {
+    fn new(key: Option<&str>) -> Self {
+        let key = key.unwrap_or_default().as_bytes().to_vec();
+        let mut back = vec![0; key.len()];
+        let mut matched = 0;
+        for at in 1..key.len() {
+            while matched > 0 && key[at] != key[matched] {
+                matched = back[matched - 1];
+            }
+            if key[at] == key[matched] {
+                matched += 1;
+            }
+            back[at] = matched;
+        }
+        Self { key, back, held: VecDeque::new() }
     }
 
     fn pass(&mut self, more: &str) -> String {
-        let Some(key) = self.key else { return more.to_owned() };
-        self.held.push_str(more);
-        // Taking a key out can bring the halves of another together.
-        while self.held.contains(key) {
-            self.held = self.held.replace(key, "");
+        if self.key.is_empty() {
+            return more.to_owned();
         }
-        let held = (1..key.len()).rev()
-            .find(|&length| key.is_char_boundary(length) && self.held.ends_with(&key[..length]))
-            .unwrap_or(0);
-        let rest = self.held.split_off(self.held.len() - held);
-        std::mem::replace(&mut self.held, rest)
+        let mut passed = Vec::with_capacity(more.len());
+        for &byte in more.as_bytes() {
+            // What is held is always the longest start of the key that the
+            // text ends with: find the longest that still is, with this byte.
+            let mut matched = self.held.len();
+            while matched > 0 && self.key[matched] != byte {
+                matched = self.back[matched - 1];
+            }
+            if self.key[matched] == byte {
+                matched += 1;
+            }
+            self.held.push_back(byte);
+            if matched == self.key.len() {
+                self.held.clear();
+                passed.push(b'\n');
+            } else {
+                passed.extend(self.held.drain(..self.held.len() - matched));
+            }
+        }
+        text_of(passed)
     }
 
     /// What was held back, once nothing more can follow it.
     fn rest(&mut self) -> String {
-        std::mem::take(&mut self.held)
+        text_of(self.held.drain(..).collect())
     }
 }
 
-/// Hands on a piece that has something in it. False once nobody takes them.
+/// What is held starts where a character of the key does, so what passes
+/// never ends inside a character. Were that ever untrue, the broken
+/// character is replaced and nothing fails.
+fn text_of(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes).unwrap_or_else(|broken| String::from_utf8_lossy(broken.as_bytes()).into_owned())
+}
+
+/// Hands on a piece that has something in it. False if it was not taken.
 fn tell(emit: &mut dyn FnMut(Piece) -> bool, piece: Piece) -> bool {
     match &piece {
         Piece::Thinking { text } | Piece::Text { text } if text.is_empty() => true,
@@ -326,7 +400,7 @@ fn read(
                 let taken = tell(emit, Piece::Thinking { text: thinking.pass(&thought) })
                     && tell(emit, Piece::Text { text: text.pass(&said) });
                 if !taken {
-                    break Err(Failure::new("stopped"));
+                    break Err(Failure::new("unheard"));
                 }
             }
         }
@@ -459,7 +533,7 @@ mod tests {
         });
         assert_eq!((pieces, outcome), (vec![text("a")], Err(Failure::new("stopped"))));
         let outcome = read(Cursor::new(&stream), None, &AtomicBool::new(false), &mut |_| false);
-        assert_eq!(outcome, Err(Failure::new("stopped")));
+        assert_eq!(outcome, Err(Failure::new("unheard")));
 
         struct Broken;
         impl Read for Broken {
@@ -483,18 +557,26 @@ mod tests {
         let mut sieve = Sieve::new(Some(key));
         assert_eq!(sieve.pass("Your key is sk-"), "Your key is ");
         assert_eq!(sieve.pass("dummy"), "");
-        assert_eq!(sieve.pass("-key, and sk-dummy-keys"), ", and ");
+        assert_eq!(sieve.pass("-key, and sk-dummy-keys"), "\n, and \n");
         assert_eq!(sieve.pass("k"), "");
         assert_eq!(sieve.pass("ip"), "skip");
-        assert_eq!(sieve.pass(" s"), " ");
+        assert_eq!(sieve.pass(" sk-sk-dummy-kez s"), " sk-sk-dummy-kez ");
         assert_eq!(sieve.rest(), "s");
         assert_eq!(sieve.rest(), "");
-        // A key cut out must not leave a key behind.
-        assert_eq!(Sieve::new(Some("ab")).pass("aabb!"), "!");
+        // What comes before a key and what comes after it cannot join into one.
+        let mut sieve = Sieve::new(Some("ab"));
+        assert_eq!([sieve.pass("a"), sieve.pass("ab"), sieve.pass("b!")].concat(), "a\nb!");
+        assert_eq!(Sieve::new(Some("ab")).pass("aabb"), "a\nb");
+        // A key that repeats itself is found wherever it starts.
+        assert_eq!(Sieve::new(Some("aab")).pass("aaab aaaab"), "a\n aa\n");
+        let mut sieve = Sieve::new(Some("abab"));
+        assert_eq!((sieve.pass("abaabab ababab"), sieve.rest()), ("aba\n \n".into(), "ab".into()));
         // Characters of more than one byte are never split.
         let mut sieve = Sieve::new(Some("éa"));
         assert_eq!(sieve.pass("xé"), "x");
         assert_eq!(sieve.pass("b"), "éb");
+        let mut sieve = Sieve::new(Some("é"));
+        assert_eq!([sieve.pass("è"), sieve.pass("é"), sieve.pass("ë")].concat(), "è\në");
         let mut none = Sieve::new(None);
         assert_eq!((none.pass("sk-dummy-key"), none.rest()), ("sk-dummy-key".into(), String::new()));
 
@@ -509,9 +591,25 @@ mod tests {
                 Piece::Text { text } => Some(text.as_str()),
                 _ => None,
             }).collect();
-            assert_eq!(said, "a  b  c", "in parts of {size}");
+            assert_eq!(said, "a \n b \n\n c", "in parts of {size}");
             assert!(pieces.iter().all(|piece| !format!("{piece:?}").contains(key)));
         }
+    }
+
+    #[test]
+    fn a_reply_made_to_be_slow_to_sift_is_not() {
+        // Each of these makes a reader that starts over at every near miss
+        // do work that grows with the square of the length.
+        let started = Instant::now();
+        for (key, reply) in [("ab", ["a".repeat(500_000), "b".repeat(500_000)].concat()),
+            (&["a".repeat(4095), "b".into()].concat(), "a".repeat(1_000_000))]
+        {
+            let mut sieve = Sieve::new(Some(key));
+            let passed: usize = reply.as_bytes().chunks(7)
+                .map(|part| sieve.pass(std::str::from_utf8(part).unwrap()).len()).sum();
+            assert!(passed + sieve.rest().len() <= reply.len());
+        }
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 
     /// What stops a reply nobody will stop.
@@ -646,16 +744,32 @@ mod tests {
     fn a_reply_holds_its_place_until_it_ends_and_can_be_stopped_meanwhile() {
         let replies = Replies::default();
         let writing = replies.begin("one").unwrap();
-        assert!(replies.begin("one").is_none());
+        assert_eq!(replies.begin("one").err(), Some(Failure::new("address")));
         let other = replies.begin("two").unwrap();
         replies.stop("one");
-        replies.stop("nobody");
         assert!(writing.halt.stop.load(Ordering::Relaxed));
         assert!(!other.halt.stop.load(Ordering::Relaxed));
         drop(writing);
-        // A new reply under a name that was stopped starts unstopped.
+        // A name is free again once its reply has ended.
         assert!(!replies.begin("one").unwrap().halt.stop.load(Ordering::Relaxed));
-        assert_eq!(replies.lock().len(), 1);
+        assert_eq!(replies.lock().writing.len(), 1);
+    }
+
+    #[test]
+    fn a_stop_that_comes_before_its_reply_still_stops_it() {
+        let replies = Replies::default();
+        replies.stop("early");
+        assert_eq!(replies.begin("early").err(), Some(Failure::new("stopped")));
+        // Once: the name is then as free as any other.
+        assert!(replies.begin("early").is_ok());
+        // Only so many are remembered, the newest ones.
+        for name in 0..EARLY_STOPS + 1 {
+            replies.stop(&name.to_string());
+        }
+        assert_eq!(replies.lock().stopped.len(), EARLY_STOPS);
+        assert!(replies.begin("0").is_ok());
+        assert_eq!(replies.begin("1").err(), Some(Failure::new("stopped")));
+        assert_eq!(replies.lock().stopped.len(), EARLY_STOPS - 1);
     }
 
     #[test]
