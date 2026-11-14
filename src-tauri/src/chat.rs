@@ -20,9 +20,10 @@ use crate::secrets;
 const REPLY_LIMIT: u64 = 64 * 1024 * 1024;
 /// One line of that stream. A line carries one piece of the reply.
 const LINE_LIMIT: usize = 1024 * 1024;
-/// A server that says nothing for this long is given up on. A model is loaded
-/// and a long conversation is read in silence, so this is generous.
-const QUIET: Duration = Duration::from_secs(300);
+/// A server that says nothing for this long is given up on. A model is loaded,
+/// a long conversation is read and some models reason in silence, so this is
+/// generous. Stopping a reply does not wait for it.
+const QUIET: Duration = Duration::from_secs(900);
 const CONNECT: Duration = Duration::from_secs(20);
 
 /// One side's part of a conversation, as the model is sent it.
@@ -55,12 +56,21 @@ pub(crate) enum Piece {
     },
 }
 
-/// The replies being written, each with the flag that stops it.
+/// What stops a reply: a flag for its reader, and the connections it reads
+/// from. Each reply has connections of its own, so closing them ends a read
+/// that is waiting on the server and touches no other reply.
+#[derive(Clone)]
+struct Halt {
+    stop: Arc<AtomicBool>,
+    agent: ureq::Agent,
+}
+
+/// The replies being written, each with what stops it.
 #[derive(Default)]
-pub(crate) struct Replies(Mutex<HashMap<String, Arc<AtomicBool>>>);
+pub(crate) struct Replies(Mutex<HashMap<String, Halt>>);
 
 impl Replies {
-    fn lock(&self) -> MutexGuard<'_, HashMap<String, Arc<AtomicBool>>> {
+    fn lock(&self) -> MutexGuard<'_, HashMap<String, Halt>> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
@@ -71,16 +81,26 @@ impl Replies {
         if replies.contains_key(request) {
             return None;
         }
-        let stop = Arc::new(AtomicBool::new(false));
-        replies.insert(request.to_owned(), Arc::clone(&stop));
-        Some(Writing { replies: self, request: request.to_owned(), stop })
+        // No limit on the whole exchange: a long answer is not a failure.
+        // Each wait within it has one.
+        let agent = providers::settings()
+            .timeout_resolve(Some(CONNECT))
+            .timeout_connect(Some(CONNECT))
+            .timeout_per_read(Some(QUIET))
+            .timeout_per_write(Some(QUIET))
+            .build().into();
+        let halt = Halt { stop: Arc::new(AtomicBool::new(false)), agent };
+        replies.insert(request.to_owned(), halt.clone());
+        Some(Writing { replies: self, request: request.to_owned(), halt })
     }
 
-    /// Asks the reply under that name to stop. One that has ended, or that
+    /// Stops the reply under that name, now. One that has ended, or that
     /// never began, is nothing to stop.
     fn stop(&self, request: &str) {
-        if let Some(stop) = self.lock().get(request) {
-            stop.store(true, Ordering::Relaxed);
+        let halt = self.lock().get(request).cloned();
+        if let Some(halt) = halt {
+            halt.stop.store(true, Ordering::Relaxed);
+            halt.agent.shutdown();
         }
     }
 }
@@ -89,7 +109,7 @@ impl Replies {
 struct Writing<'a> {
     replies: &'a Replies,
     request: String,
-    stop: Arc<AtomicBool>,
+    halt: Halt,
 }
 
 impl Drop for Writing<'_> {
@@ -127,10 +147,10 @@ pub(crate) async fn chat_send(
         if needs_key == Some(true) && key.is_none() {
             return Err(Failure::new("refused"));
         }
-        let stop = Arc::clone(&writing.stop);
+        let halt = writing.halt.clone();
         tauri::async_runtime::spawn_blocking(move || {
             let key = key.as_deref().map(String::as_str);
-            ask(&address, key, &model, &turns, &stop, &mut |piece| page.send(piece).is_ok())
+            ask(&halt, &address, key, &model, &turns, &mut |piece| page.send(piece).is_ok())
         }).await.map_err(|_| Failure::new("answer"))?
     }.await;
     // Nobody is left to tell if the page has gone.
@@ -138,8 +158,8 @@ pub(crate) async fn chat_send(
     Ok(())
 }
 
-/// Stops a reply. It ends when the server next says something or goes quiet
-/// for too long, which is when the connection to it is closed.
+/// Stops a reply by closing its connection, which is also what tells the
+/// server to stop writing it.
 #[tauri::command]
 pub(crate) fn chat_stop(replies: State<'_, Replies>, request: String) {
     replies.stop(&request);
@@ -154,32 +174,24 @@ fn reply_status(status: u16) -> Result<(), Failure> {
 }
 
 fn ask(
-    address: &Address, key: Option<&str>, model: &str, turns: &[Turn], stop: &AtomicBool,
+    halt: &Halt, address: &Address, key: Option<&str>, model: &str, turns: &[Turn],
     emit: &mut dyn FnMut(Piece) -> bool,
 ) -> Result<(), Failure> {
     let body = serde_json::to_vec(&json!({ "model": model, "messages": turns, "stream": true }))
         .map_err(|_| Failure::new("answer"))?;
     let bearer = key.map(|key| Zeroizing::new(format!("Bearer {key}")));
-    // No limit on the whole exchange: a long answer is not a failure. Each
-    // wait within it has one.
-    let agent: ureq::Agent = providers::settings()
-        .timeout_resolve(Some(CONNECT))
-        .timeout_connect(Some(CONNECT))
-        .timeout_per_read(Some(QUIET))
-        .timeout_per_write(Some(QUIET))
-        .build().into();
-    let mut request = agent.post(&address.endpoint("/chat/completions"))
+    let mut request = halt.agent.post(&address.endpoint("/chat/completions"))
         .header("Accept", "text/event-stream")
         .content_type("application/json");
     if let Some(bearer) = &bearer {
         request = request.header("Authorization", providers::secret_header(bearer)?);
     }
-    if stop.load(Ordering::Relaxed) {
-        return Err(Failure::new("stopped"));
-    }
-    let response = request.send(&body[..]).map_err(providers::transport_error)?;
+    // A stop closes the connection under whatever was waiting on it, and
+    // what that fails with says nothing of why.
+    let stopped = |failure| if halt.stop.load(Ordering::Relaxed) { Failure::new("stopped") } else { failure };
+    let response = request.send(&body[..]).map_err(|error| stopped(providers::transport_error(error)))?;
     reply_status(response.status().as_u16())?;
-    read(BufReader::new(response.into_body().into_reader()), key, stop, emit)
+    read(BufReader::new(response.into_body().into_reader()), key, &halt.stop, emit).map_err(stopped)
 }
 
 /// One line of a reply's stream, as far as it matters here.
@@ -328,7 +340,10 @@ fn read(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
+    use std::io::{Cursor, Write};
+    use std::net::TcpListener;
+    use std::thread;
+    use std::time::Instant;
     use crate::providers::tests::server;
 
     fn thinking(text: &str) -> Piece {
@@ -499,6 +514,11 @@ mod tests {
         }
     }
 
+    /// What stops a reply nobody will stop.
+    fn halt() -> Halt {
+        Replies::default().begin("test").unwrap().halt.clone()
+    }
+
     fn turns() -> Vec<Turn> {
         vec![Turn { role: Role::User, content: "Hi".into() },
             Turn { role: Role::Assistant, content: "Hello".into() },
@@ -514,7 +534,7 @@ mod tests {
         for key in [None, Some("dummy-key")] {
             let (address, thread) = server(vec![stream(&[&chunk(json!({"content": "Bye"})), "data: [DONE]\n\n"].concat())]);
             let mut pieces = Vec::new();
-            let outcome = ask(&address, key, "some/model:1", &turns(), &AtomicBool::new(false), &mut |piece| {
+            let outcome = ask(&halt(), &address, key, "some/model:1", &turns(), &mut |piece| {
                 pieces.push(piece);
                 true
             });
@@ -544,7 +564,7 @@ mod tests {
                 "HTTP/1.1 {status} Whatever\r\nLocation: http://127.0.0.1:9/\r\nConnection: close\r\n\r\n{}",
                 chunk(json!({"content": "private detail"})))]);
             let mut pieces = Vec::new();
-            let outcome = ask(&address, Some("dummy-key"), "model", &turns(), &AtomicBool::new(false), &mut |piece| {
+            let outcome = ask(&halt(), &address, Some("dummy-key"), "model", &turns(), &mut |piece| {
                 pieces.push(piece);
                 true
             });
@@ -555,9 +575,55 @@ mod tests {
 
     #[test]
     fn nothing_is_sent_for_a_reply_already_stopped() {
-        let (address, _thread) = server(vec![]);
-        let outcome = ask(&address, None, "model", &turns(), &AtomicBool::new(true), &mut |_| true);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = Address::parse(&format!("http://{}/v1", listener.local_addr().unwrap())).unwrap();
+        let replies = Replies::default();
+        let writing = replies.begin("one").unwrap();
+        replies.stop("one");
+        let outcome = ask(&writing.halt, &address, None, "model", &turns(), &mut |_| true);
         assert_eq!(outcome, Err(Failure::new("stopped")));
+        assert_eq!(listener.accept().unwrap_err().kind(), std::io::ErrorKind::WouldBlock);
+    }
+
+    #[test]
+    fn a_stop_ends_a_reply_that_is_waiting_on_a_silent_server() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = Address::parse(&format!("http://{}/v1", listener.local_addr().unwrap())).unwrap();
+        // Says one thing, then nothing, until the client hangs up.
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+            let mut request = [0; 4096];
+            let _ = stream.read(&mut request).unwrap();
+            stream.write_all(self::stream(&chunk(json!({"content": "Hi"}))).as_bytes()).unwrap();
+            let started = Instant::now();
+            while stream.read(&mut request).is_ok_and(|read| read > 0) {}
+            started.elapsed()
+        });
+        let replies = Replies::default();
+        let writing = replies.begin("one").unwrap();
+        let other = replies.begin("two").unwrap();
+        let mut pieces = Vec::new();
+        let (heard, hearing) = std::sync::mpsc::channel();
+        let outcome = thread::scope(|scope| {
+            // Stopped from elsewhere, once the reader is waiting for more.
+            let replies = &replies;
+            scope.spawn(move || {
+                hearing.recv().unwrap();
+                thread::sleep(Duration::from_millis(200));
+                replies.stop("one");
+            });
+            ask(&writing.halt, &address, None, "model", &turns(), &mut |piece| {
+                pieces.push(piece);
+                heard.send(()).unwrap();
+                true
+            })
+        });
+        assert_eq!((pieces, outcome), (vec![text("Hi")], Err(Failure::new("stopped"))));
+        // The server saw the connection close, long before it would have gone quiet.
+        assert!(server.join().unwrap() < Duration::from_secs(10));
+        assert!(!other.halt.stop.load(Ordering::Relaxed));
     }
 
     #[test]
@@ -584,11 +650,11 @@ mod tests {
         let other = replies.begin("two").unwrap();
         replies.stop("one");
         replies.stop("nobody");
-        assert!(writing.stop.load(Ordering::Relaxed));
-        assert!(!other.stop.load(Ordering::Relaxed));
+        assert!(writing.halt.stop.load(Ordering::Relaxed));
+        assert!(!other.halt.stop.load(Ordering::Relaxed));
         drop(writing);
         // A new reply under a name that was stopped starts unstopped.
-        assert!(!replies.begin("one").unwrap().stop.load(Ordering::Relaxed));
+        assert!(!replies.begin("one").unwrap().halt.stop.load(Ordering::Relaxed));
         assert_eq!(replies.lock().len(), 1);
     }
 
