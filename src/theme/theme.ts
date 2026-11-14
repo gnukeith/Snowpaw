@@ -24,7 +24,11 @@ export function loadTheme(): Theme {
 }
 
 export function saveTheme(theme: Theme) {
-  localStorage.setItem(storageKey, JSON.stringify(theme));
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(theme));
+  } catch {
+    // Storage is denied or full. The theme still applies until the app closes.
+  }
 }
 
 /** Puts the theme on the root element, where tokens.css picks it up. */

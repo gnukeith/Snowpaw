@@ -5,7 +5,7 @@ import { applyTheme, loadTheme } from "./theme/theme";
 import "./theme/tokens.css";
 import "./theme/base.css";
 
-// Before the first render, so the window never flashes the wrong colours.
+// Before the first render, so React never paints with the default colours.
 applyTheme(loadTheme());
 
 createRoot(document.getElementById("root")!).render(
