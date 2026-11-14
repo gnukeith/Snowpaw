@@ -103,12 +103,17 @@ fn validate_proof(proof: Option<&str>) -> Result<(), Failure> {
 
 #[tauri::command]
 pub(crate) async fn models_list(
-    id: String, address: String, proof: Option<String>,
+    id: String, address: String, proof: Option<String>, needs_key: Option<bool>,
 ) -> Result<Vec<String>, Failure> {
     validate_id(&id)?;
     let address = Address::parse(&address)?;
     validate_proof(proof.as_deref())?;
     let key = secrets::lookup(&id, &address.origin()).await?;
+    // A provider that wants a key is not asked without one: some answer a
+    // list of models to anyone, which would look like a working connection.
+    if needs_key == Some(true) && key.is_none() {
+        return Err(Failure::new("refused"));
+    }
     tauri::async_runtime::spawn_blocking(move || {
         list(&address, key.as_deref().map(String::as_str), proof.as_deref())
     }).await.map_err(|_| Failure::new("answer"))?

@@ -13,7 +13,9 @@ import { invoke } from "@tauri-apps/api/core";
    has landed, and a forget cannot overtake the save that followed it. */
 const turns = new Map<string, Promise<unknown>>();
 
-/** Runs `call` once every earlier call about the key `id` has finished. */
+/** Runs `call` once every earlier call about the key `id` has finished.
+    Not to be called from inside a `call` for the same id: that call would
+    wait for itself. */
 export function inTurn<T>(id: string, call: () => Promise<T>): Promise<T> {
   const before = turns.get(id) ?? Promise.resolve();
   // An earlier call that failed has still finished.
@@ -42,14 +44,33 @@ export function forgetKey(id: string): Promise<void> {
   return inTurn(id, () => invoke("key_forget", { id }));
 }
 
+/** What a request that was waiting its turn fails with when the view that
+    asked for it has gone by the time its turn comes: it is never sent. */
+const dropped = { kind: "dropped" };
+
+/** A request to a server, sent when its turn comes only if `alive` still
+    says the view that asked for it is there. Saves and forgets are never
+    dropped this way: they must land whoever asked. */
+function sendInTurn<T>(id: string, alive: (() => boolean) | undefined, send: () => Promise<T>): Promise<T> {
+  return inTurn(id, () => (alive && !alive() ? Promise.reject(dropped) : send()));
+}
+
+interface ListOptions {
+  /** A path that answers only to a good key, for a provider whose list of
+      models answers to anyone. */
+  proof?: string;
+  /** Refuse, without asking the server, if no key is saved. */
+  needsKey?: boolean;
+  alive?: () => boolean;
+}
+
 /** Asks a model provider which models it has, which proves the address
-    answers. `proof` is a path that answers only to a good key, for a provider
-    whose list answers to anyone. */
-export function listModels(id: string, address: string, proof?: string): Promise<string[]> {
-  return inTurn(id, () => invoke("models_list", { id, address, proof }));
+    answers. */
+export function listModels(id: string, address: string, { proof, needsKey, alive }: ListOptions = {}): Promise<string[]> {
+  return sendInTurn(id, alive, () => invoke("models_list", { id, address, proof, needsKey }));
 }
 
 /** Makes one search with the saved key, to prove the key works. */
-export function testSearch(): Promise<void> {
-  return inTurn("search", () => invoke("search_test"));
+export function testSearch(alive?: () => boolean): Promise<void> {
+  return sendInTurn("search", alive, () => invoke("search_test"));
 }

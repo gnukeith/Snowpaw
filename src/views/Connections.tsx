@@ -142,16 +142,17 @@ export function Search() {
     if (keyBox.current) keyBox.current.value = "";
     setTyped(false);
     setOutcome({ state: "working" });
+    // From here this attempt's outcome is the one shown.
+    changes.current += 1;
     let has = saved === true;
     try {
       if (key) {
-        changes.current += 1;
         await saveKey(search.id, search.address, key);
         has = true;
         if (!shown.current) return;
         setSaved(true);
       }
-      await testSearch();
+      await testSearch(() => shown.current);
       if (shown.current) setOutcome({ state: "connected" });
     } catch (failure) {
       if (shown.current) setOutcome({ state: "failed", why: describeFailure(failure, has) });
@@ -187,7 +188,7 @@ export function Search() {
             placeholder={saved ? "Saved. Type to replace it." : "Paste your key"}
             disabled={working}
             onChange={(event) => {
-              setTyped(event.target.value !== "");
+              setTyped(event.target.value.trim() !== "");
               setOutcome({ state: "idle" });
             }}
           />

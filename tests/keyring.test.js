@@ -55,3 +55,10 @@ test("calls about different keys do not wait for each other", async () => {
   assert.equal(await other, "quick");
   slow.finish();
 });
+
+test("a request whose view has gone by its turn is never sent", async () => {
+  const { testSearch, listModels } = await import("../src/data/keyring.ts");
+  // Were it sent, it would fail differently: there is no app to send it to.
+  await assert.rejects(testSearch(() => false), (failure) => failure.kind === "dropped");
+  await assert.rejects(listModels("x", "https://example.com/v1", { alive: () => false }), (failure) => failure.kind === "dropped");
+});

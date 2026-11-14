@@ -155,17 +155,19 @@ export function ConnectionForm({ id, connection, onSave, onRemove, onClose, auto
     const key = keyBox.current?.value.trim() ?? "";
     emptyKey();
     setOutcome({ state: "working" });
+    // From here this attempt's outcome is the one shown: an answer about
+    // whether a key is saved that arrives later is set aside.
+    changes.current += 1;
     let saved = keySaved === true;
     try {
       if (key) {
-        changes.current += 1;
         await saveKey(id, address, key);
         saved = true;
         if (!kept) loose.current = true;
         if (!shown.current) return letGo();
         setKeySaved(true);
       }
-      const found = await listModels(id, address, preset.proof);
+      const found = await listModels(id, address, { proof: preset.proof, needsKey: preset.key === "needed", alive: () => shown.current });
       // Gone while it was asking: the clean-up has already run.
       if (!shown.current) return;
       const model = found.includes(draft.model) ? draft.model : (found[0] ?? "");
@@ -249,7 +251,8 @@ export function ConnectionForm({ id, connection, onSave, onRemove, onClose, auto
             }
             disabled={working}
             onChange={(event) => {
-              setTyped(event.target.value !== "");
+              // Spaces alone are not a key.
+              setTyped(event.target.value.trim() !== "");
               setOutcome({ state: "idle" });
             }}
           />
