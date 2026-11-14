@@ -11,8 +11,9 @@ import { Computer } from "./Computer";
 import { Scheduled } from "./Scheduled";
 
 interface Props {
-  /** The panel's outermost element, for whoever needs to measure it. */
+  /** The panel's outermost element and its id, for the edge that resizes it. */
   ref?: Ref<HTMLElement>;
+  id?: string;
   agent: Agent;
   work: Work;
   /** The window's buttons: while the panel is open, it is in the window's corner. */
@@ -24,7 +25,7 @@ interface Props {
 const tabs = ["changes", "activity", "computer", "scheduled"] as const;
 
 /** What an agent is doing, beside its conversation. */
-export function AgentPanel({ ref, agent, work, windowButtons, onClose }: Props) {
+export function AgentPanel({ ref, id, agent, work, windowButtons, onClose }: Props) {
   const panel = useRef<HTMLElement>(null);
   const [tab, setTab] = useState<(typeof tabs)[number]>(tabs[0]);
   const [full, setFull] = useState(false);
@@ -56,6 +57,7 @@ export function AgentPanel({ ref, agent, work, windowButtons, onClose }: Props) 
         if (typeof ref === "function") ref(element);
         else if (ref) ref.current = element;
       }}
+      id={id}
       className={styles.side}
       aria-label={`What ${agent.name} is doing`}
     >

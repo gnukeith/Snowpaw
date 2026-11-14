@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import styles from "./App.module.css";
 import { Button } from "./components/Button";
 import { Empty } from "./components/Empty";
@@ -59,6 +59,7 @@ export function App() {
   // How wide the user dragged the agent's panel. Undefined: as it comes.
   const [panelWidth, setPanelWidth] = useState(loadPanelWidth);
   const side = useRef<HTMLElement>(null);
+  const panelId = useId();
   // The window buttons to draw. None until the Rust side says the window has
   // no title bar, and none ever where it kept one.
   const [buttons, setButtons] = useState<ButtonLayout>();
@@ -218,7 +219,9 @@ export function App() {
         </div>
         {selected && panelOpen && (
           <PanelResizer
-            measure={() => side.current?.getBoundingClientRect().width ?? 0}
+            panel={side}
+            controls={panelId}
+            label={`Width of what ${selected.name} is doing`}
             onResize={(width) => setPanelWidth(width === undefined ? undefined : Math.max(0, width))}
           />
         )}
@@ -226,6 +229,7 @@ export function App() {
       {selected && panelOpen && (
         <AgentPanel
           ref={side}
+          id={panelId}
           agent={selected}
           work={workOf(work, selected.id)}
           windowButtons={farButtons}
