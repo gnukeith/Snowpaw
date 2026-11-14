@@ -1,0 +1,92 @@
+.plot {
+  margin: 0;
+  padding: var(--space-3);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--text-md);
+  line-height: var(--leading);
+  min-width: 0;
+}
+
+.heading {
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+  margin-bottom: var(--space-2);
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 8 / 5;
+  overflow: hidden;
+}
+
+.frame { fill: var(--surface); }
+
+.grid, .axis, .zero, .curve {
+  fill: none;
+  stroke-width: var(--hairline);
+  vector-effect: non-scaling-stroke;
+}
+
+.grid { stroke: var(--border); }
+.axis { stroke: var(--text-muted); }
+.zero {
+  stroke: var(--text-muted);
+  stroke-width: calc(var(--hairline) * var(--icon-stroke));
+}
+.curve {
+  stroke: currentColor;
+  stroke-width: calc(var(--hairline) * var(--icon-stroke));
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.point {
+  fill: currentColor;
+  r: var(--space-1);
+}
+
+.xTick, .yTick {
+  fill: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.xTick { text-anchor: middle; }
+.yTick { text-anchor: end; dominant-baseline: middle; }
+.xLabel, .yLabel {
+  fill: var(--text);
+  font-size: var(--text-md);
+  text-anchor: middle;
+}
+
+.legend {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-4);
+  row-gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+.legendItem {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.swatch {
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--space-4);
+  border-top: calc(var(--hairline) * var(--icon-stroke)) solid currentColor;
+}
+.series1 { color: var(--series-1); }
+.series2 { color: var(--series-2); }
+.series3 { color: var(--series-3); }
+.series4 { color: var(--series-4); }
+.series5 { color: var(--series-5); }
+.series6 { color: var(--series-6); }
