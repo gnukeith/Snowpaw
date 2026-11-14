@@ -83,7 +83,7 @@ export function AgentEditor({ agent, onSave, onDelete, onClose }: Props) {
         <label className={styles.field}>
           <span className={styles.label}>Name</span>
           <Input
-            autoFocus
+            data-focus-first
             required
             maxLength={maxNameLength}
             value={draft.name}

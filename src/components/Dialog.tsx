@@ -27,6 +27,9 @@ export function Dialog({ title, onClose, wide, children }: Props) {
   useEffect(() => {
     opener.current ??= document.activeElement;
     if (!dialog.current?.open) dialog.current?.showModal();
+    // Opening puts focus on the first thing in the dialog that can take it.
+    // A dialog that wants it somewhere else marks the place.
+    dialog.current?.querySelector<HTMLElement>("[data-focus-first]")?.focus();
     // Closing the dialog hands focus back by itself. Taking the dialog off the
     // page does not, so return it by hand. If what opened the dialog has gone
     // too, there is nothing to return it to.
