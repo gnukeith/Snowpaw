@@ -22,6 +22,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 /// A fixed absolute path, so a changed PATH cannot swap in another program.
 const QEMU: &str = "/usr/bin/qemu-system-x86_64";
 const CONTROL_SOCKET: &str = "qmp.sock";
+/// The machine, with every built-in device it can do without switched off:
+/// each emulated device is code the guest can attack.
+const MACHINE: &str = "q35,usb=off,sata=off,smbus=off,i8042=off,hpet=off,vmport=off";
 /// What the guest gets. A desktop is not usable with much less.
 const MEMORY_MB: &str = "4096";
 const PROCESSORS: &str = "4";
@@ -102,12 +105,12 @@ impl Vm {
             // Written as JSON, so nothing in the path can be read as an option.
             let file = json!({ "driver": "file", "filename": path, "read-only": true, "node-name": "disc" });
             qemu.args(["-blockdev", &file.to_string()])
-                .args(["-device", "virtio-scsi-pci", "-device", "scsi-cd,drive=disc,bootindex=0"]);
+                .args(["-device", "virtio-blk-pci,drive=disc,bootindex=0"]);
         }
         let dir = session_dir()?;
         let child = qemu
-            .args(["-accel", "kvm", "-machine", "q35", "-cpu", "host", "-m", MEMORY_MB, "-smp", PROCESSORS])
-            // Only the devices named here exist: no network card, no audio, no USB.
+            .args(["-accel", "kvm", "-machine", MACHINE, "-cpu", "host", "-m", MEMORY_MB, "-smp", PROCESSORS])
+            // Nothing is added by default: no network card, no audio, no USB.
             .args(["-nodefaults", "-no-user-config", "-nic", "none"])
             // The screen is read through the control socket, never shown or served by QEMU.
             .args(["-display", "none", "-vga", "virtio"])
@@ -509,7 +512,7 @@ mod tests {
         fs::File::create(&disc).unwrap().set_len(1024 * 1024).unwrap();
 
         let vm = Vm::spawn(Some(&disc)).unwrap().connect().unwrap();
-        // What the guest's devices hold: one CD drive with this file in it.
+        // What the guest's devices hold: one drive with this file in it.
         let devices = lock(&vm.screen).qmp.execute("query-block", json!({})).unwrap();
         let [drive] = devices.as_array().unwrap().as_slice() else { panic!("{devices}") };
         assert!(drive["qdev"].as_str().is_some_and(|device| !device.is_empty()), "{drive}");
@@ -519,6 +522,26 @@ mod tests {
         assert!(Vm::spawn(Some(Path::new("relative.iso"))).is_err(), "a relative path is refused");
         let missing = Vm::spawn(Some(&scratch.0.join("missing.iso"))).unwrap();
         assert!(missing.connect().is_err(), "QEMU does not start without its disc");
+    }
+
+    /// Runs the real QEMU. A controller added by accident (USB, SATA, a
+    /// network card) shows up here. The switched-off ISA devices would not.
+    #[test]
+    fn the_machine_has_no_controller_it_does_not_need() {
+        if !can_run_here() {
+            return;
+        }
+        let vm = Vm::spawn(None).unwrap().connect().unwrap();
+        let buses = lock(&vm.screen).qmp.execute("query-pci", json!({})).unwrap();
+        let devices: Vec<_> = buses
+            .as_array()
+            .unwrap()
+            .iter()
+            .flat_map(|bus| bus["devices"].as_array().unwrap())
+            .map(|device| device["class_info"]["desc"].as_str().unwrap())
+            .collect();
+        // The two bridges are the machine itself. The screen is the only device on it.
+        assert_eq!(devices, ["Host bridge", "VGA controller", "ISA bridge"]);
     }
 
     /// Runs the real QEMU. Stopping must not wait for a capture in progress.
