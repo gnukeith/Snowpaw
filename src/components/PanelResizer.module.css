@@ -1,0 +1,29 @@
+/* It fills the gap between the two panels, which is already there, so it
+   takes no room of its own. A line shows in it while it is in use. */
+.resizer {
+  position: absolute;
+  inset: var(--edge) 0 var(--edge) auto;
+  display: grid;
+  justify-items: center;
+  width: var(--edge);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizer::before {
+  width: calc(var(--hairline) * 2);
+  margin-block: var(--radius-panel);
+  border-radius: var(--hairline);
+  content: "";
+}
+
+.resizer:hover::before,
+.resizer:active::before,
+.resizer:focus-visible::before {
+  background: var(--accent);
+}
+
+/* The line is the sign of focus here: a ring round a sliver would be noise. */
+.resizer:focus-visible {
+  outline: 0;
+}

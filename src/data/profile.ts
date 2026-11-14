@@ -38,3 +38,24 @@ export function savePicture(picture: string | undefined): boolean {
     return false;
   }
 }
+
+const panelKey = "snowpaw.panel-width";
+
+/** How wide the user last dragged the agent's panel, in pixels, if they did. */
+export function loadPanelWidth(): number | undefined {
+  try {
+    const saved = Number(localStorage.getItem(panelKey));
+    return Number.isFinite(saved) && saved > 0 ? saved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function savePanelWidth(width: number | undefined) {
+  try {
+    if (width === undefined) localStorage.removeItem(panelKey);
+    else localStorage.setItem(panelKey, String(Math.round(width)));
+  } catch {
+    // Storage is denied or full. The width still holds until the app closes.
+  }
+}

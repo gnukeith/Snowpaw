@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { Avatar } from "../components/Avatar";
 import { IconButton } from "../components/IconButton";
 import { Segmented } from "../components/Segmented";
@@ -11,6 +11,8 @@ import { Computer } from "./Computer";
 import { Scheduled } from "./Scheduled";
 
 interface Props {
+  /** The panel's outermost element, for whoever needs to measure it. */
+  ref?: Ref<HTMLElement>;
   agent: Agent;
   work: Work;
   /** The window's buttons: while the panel is open, it is in the window's corner. */
@@ -22,9 +24,9 @@ interface Props {
 const tabs = ["computer", "activity", "changes", "scheduled"] as const;
 
 /** What an agent is doing, beside its conversation. */
-export function AgentPanel({ agent, work, windowButtons, onClose }: Props) {
+export function AgentPanel({ ref, agent, work, windowButtons, onClose }: Props) {
   const panel = useRef<HTMLElement>(null);
-  const [tab, setTab] = useState<(typeof tabs)[number]>("computer");
+  const [tab, setTab] = useState<(typeof tabs)[number]>(tabs[0]);
   const [full, setFull] = useState(false);
 
   // Opening the panel moves focus into it. In a narrow window the panel takes
@@ -48,7 +50,15 @@ export function AgentPanel({ agent, work, windowButtons, onClose }: Props) {
   }
 
   return (
-    <aside ref={panel} className={styles.side} aria-label={`What ${agent.name} is doing`}>
+    <aside
+      ref={(element) => {
+        panel.current = element;
+        if (typeof ref === "function") ref(element);
+        else if (ref) ref.current = element;
+      }}
+      className={styles.side}
+      aria-label={`What ${agent.name} is doing`}
+    >
       <div className={styles.panel}>
         {/* Full screen, there is no window to move: the panel is the screen. */}
         <header className={styles.header} data-window-drag={full ? undefined : ""}>

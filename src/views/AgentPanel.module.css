@@ -1,13 +1,21 @@
 /* The agent's panel sits beside the conversation while the window has room
-   for both. In a narrower window it takes the conversation's place: the
-   product below is hugely negative when there is room and hugely positive
-   when there is not, so the width snaps to the panel's own or to all the
-   space beside the sidebar. */
+   for both, as wide as it was last dragged, but never so wide that the
+   conversation is squeezed below its least width. In a narrower window it
+   takes the conversation's place: the product below is hugely negative when
+   there is room and hugely positive when there is not, so the width snaps to
+   the panel's own or to all the space beside the sidebar. */
 .side {
   flex: 0 0
     min(
       100% - var(--sidebar-width),
-      max(var(--panel-width), (var(--roomy-width) - 100%) * 999)
+      max(
+        clamp(
+          var(--panel-min),
+          var(--panel-width),
+          100% - var(--sidebar-width) - var(--conversation-min)
+        ),
+        (var(--roomy-width) - 100%) * 999
+      )
     );
   min-width: 0;
   padding: var(--edge) var(--edge) var(--edge) 0;

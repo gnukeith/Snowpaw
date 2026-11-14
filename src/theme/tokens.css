@@ -39,9 +39,12 @@
   --avatar-xl: calc(var(--unit) * 20);
   --sidebar-width: calc(var(--unit) * 66);
   --conversation-min: calc(var(--unit) * 80);
+  /* The agent's panel: as wide as the user last dragged it, within these two.
+     Dragging sets --panel-width on the root element. */
   --panel-width: calc(var(--unit) * 120);
+  --panel-min: calc(var(--unit) * 90);
   /* The narrowest window that fits the sidebar, a conversation and a panel. */
-  --roomy-width: calc(var(--sidebar-width) + var(--conversation-min) + var(--panel-width));
+  --roomy-width: calc(var(--sidebar-width) + var(--conversation-min) + var(--panel-min));
   --settings-nav-width: calc(var(--unit) * 50);
   --setting-width: calc(var(--unit) * 50);
   --dialog-width: calc(var(--unit) * 100);

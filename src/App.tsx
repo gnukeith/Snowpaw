@@ -1,8 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./App.module.css";
 import { Button } from "./components/Button";
 import { Empty } from "./components/Empty";
+import { PanelResizer } from "./components/PanelResizer";
 import { Sidebar } from "./components/Sidebar";
 import { useWindowDrag, WindowButtons, WindowFrame } from "./components/WindowButtons";
 import {
@@ -22,7 +23,14 @@ import {
   type TaskDraft,
 } from "./data/conversation";
 import { parseButtonLayout, type ButtonLayout } from "./data/frame";
-import { loadName, loadPicture, saveName, savePicture } from "./data/profile";
+import {
+  loadName,
+  loadPanelWidth,
+  loadPicture,
+  saveName,
+  savePanelWidth,
+  savePicture,
+} from "./data/profile";
 import { applyTheme, loadTheme, saveTheme, tintWindow } from "./theme/theme";
 import { AgentEditor } from "./views/AgentEditor";
 import { AgentPanel } from "./views/AgentPanel";
@@ -48,6 +56,9 @@ export function App() {
   // The proposed task being changed before it is agreed to, and whose it is.
   const [proposing, setProposing] = useState<{ agentId: string; message: Message }>();
   const [panelOpen, setPanelOpen] = useState(false);
+  // How wide the user dragged the agent's panel. Undefined: as it comes.
+  const [panelWidth, setPanelWidth] = useState(loadPanelWidth);
+  const side = useRef<HTMLElement>(null);
   // The window buttons to draw. None until the Rust side says the window has
   // no title bar, and none ever where it kept one.
   const [buttons, setButtons] = useState<ButtonLayout>();
@@ -70,6 +81,14 @@ export function App() {
   }, [agents, picture]);
 
   useEffect(() => saveName(name), [name]);
+
+  useEffect(() => {
+    // On the root element, where the tokens that follow from it are worked out.
+    const root = document.documentElement.style;
+    if (panelWidth === undefined) root.removeProperty("--panel-width");
+    else root.setProperty("--panel-width", `${panelWidth}px`);
+    savePanelWidth(panelWidth);
+  }, [panelWidth]);
 
   useEffect(() => {
     // Without an answer the fallback below stays, so a failure needs no handling.
@@ -197,9 +216,16 @@ export function App() {
             </div>
           )}
         </div>
+        {selected && panelOpen && (
+          <PanelResizer
+            measure={() => side.current?.getBoundingClientRect().width ?? 0}
+            onResize={(width) => setPanelWidth(width === undefined ? undefined : Math.max(0, width))}
+          />
+        )}
       </main>
       {selected && panelOpen && (
         <AgentPanel
+          ref={side}
           agent={selected}
           work={workOf(work, selected.id)}
           windowButtons={farButtons}
