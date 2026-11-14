@@ -69,6 +69,44 @@ rename to after.txt
   assert.deepEqual(file.hunks, []);
 });
 
+test("paths that git quotes are read back as they are", () => {
+  const files = parseDiff(String.raw`diff --git "a/caf\303\251 \"old\".txt" "b/caf\303\251 \"new\".txt"
+similarity index 100%
+rename from "caf\303\251 \"old\".txt"
+rename to "caf\303\251 \"new\".txt"
+diff --git "a/tab\there.txt" "b/tab\there.txt"
+--- "a/tab\there.txt"
++++ "b/tab\there.txt"
+@@ -1 +1 @@
+-a
++b
+diff --git "a/pic \"1\".png" "b/pic \"1\".png"
+Binary files "a/pic \"1\".png" and "b/pic \"1\".png" differ
+diff --git a/my file.txt b/my file.txt
+--- a/my file.txt\t
++++ b/my file.txt\t
+@@ -1 +1 @@
+-a
++b
+`.replaceAll("\\t\n", "\t\n"));
+  assert.deepEqual(files.map((file) => file.path), [
+    'café "new".txt',
+    "tab\there.txt",
+    'pic "1".png',
+    "my file.txt",
+  ]);
+});
+
+test("quoting that cannot be undone leaves the path as written", () => {
+  const [file] = parseDiff(String.raw`--- "a/bad\377.txt"
++++ "b/bad\377.txt"
+@@ -1 +1 @@
+-a
++b
+`);
+  assert.equal(file.path, String.raw`"b/bad\377.txt"`);
+});
+
 test("a plain unified diff, without git's lines, is read too", () => {
   const files = parseDiff(`--- one.txt\t2026-01-01 10:00:00
 +++ one.txt\t2026-01-02 10:00:00

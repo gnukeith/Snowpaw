@@ -23,10 +23,41 @@ export interface FileDiff {
 
 const hunkHeader = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
-/** A path as a diff header writes it, without the `a/` or `b/` git puts in
-    front or the timestamp plain `diff` puts behind. */
+const escapes: Record<string, string> = { n: "\n", t: "\t", r: "\r" };
+
+/** Undoes the quoting git gives a path with unusual characters in it:
+    `"caf\303\251 \"x\".txt"` is `café "x".txt`. A path that is not quoted,
+    or not validly so, comes back as it was. */
+function unquote(text: string): string {
+  if (!/^".*"$/.test(text)) return text;
+  // A byte written in octal is one byte of UTF-8, so the whole path is turned
+  // into percent escapes and decoded in one go.
+  const encoded = text
+    .slice(1, -1)
+    .replace(/\\([0-7]{3})|\\(.)|([^\\]+)/g, (_, octal, char, plain) =>
+      octal
+        ? `%${Number.parseInt(octal, 8).toString(16).padStart(2, "0")}`
+        : encodeURIComponent(char ? (escapes[char] ?? char) : plain),
+    );
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return text;
+  }
+}
+
+/** A path as a `---` or `+++` line writes it, without the `a/` or `b/` git
+    puts in front or the timestamp plain `diff` puts behind. */
 function path(header: string): string {
-  return header.split("\t")[0].replace(/^[ab]\//, "");
+  return unquote(header.split("\t")[0]).replace(/^[ab]\//, "");
+}
+
+/** The new path from a `diff --git a/old b/new` line. Only a change with no
+    `+++` line, such as a binary file, is left with this as its name. */
+function gitPath(line: string): string {
+  const paths = line.slice("diff --git ".length);
+  const second = Math.max(paths.lastIndexOf(" b/"), paths.lastIndexOf(' "b/'));
+  return second < 0 ? paths : path(paths.slice(second + 1));
 }
 
 /**
@@ -84,8 +115,9 @@ export function parseDiff(text: string): FileDiff[] {
     }
 
     if (line.startsWith("diff --git ")) {
-      // Provisional: the +++ line below names the file more reliably.
-      open(line.slice(line.lastIndexOf(" b/") + 3));
+      open(gitPath(line));
+    } else if (line.startsWith("rename to ")) {
+      if (file) file.path = unquote(line.slice("rename to ".length));
     } else if (line.startsWith("--- ")) {
       // In a plain diff, with no "diff --git" lines, this is what opens a file.
       if (!file || file.hunks.length > 0) open("");
