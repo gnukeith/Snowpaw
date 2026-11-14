@@ -15,3 +15,15 @@ Then:
 pnpm install
 pnpm tauri dev
 ```
+
+In a development build, Settings has a Developer category that loads sample
+agents, so every part of the app can be seen with something in it. Open
+Settings by clicking your name at the bottom of the sidebar.
+
+## Check it
+
+```sh
+pnpm typecheck
+pnpm test
+(cd src-tauri && cargo test)
+```
