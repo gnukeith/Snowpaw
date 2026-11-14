@@ -72,6 +72,13 @@ test("a formula does not reach across a blank line", () => {
   assert.deepEqual(read("\\(a\n\nb\\)"), [["text", "(a"], ["text", "b)"]]);
 });
 
+test("a command straight after the opening bracket, or the end straight after a line break, reads", () => {
+  assert.deepEqual(read("\\(\\frac{1}{2}\\)"), [["inlineMath", "\\frac{1}{2}"]]);
+  assert.deepEqual(read("\\[\nx\n\\]"), [["math", "x"]]);
+  assert.deepEqual(read("so \\("), [["text", "so ("]]);
+  assert.deepEqual(read("so $"), [["text", "so $"]]);
+});
+
 test("brackets with nothing in them, or unclosed, are brackets", () => {
   assert.deepEqual(read("an empty \\(\\) pair"), [["text", "an empty () pair"]]);
   assert.deepEqual(read("an open \\( bracket"), [["text", "an open ( bracket"]]);
@@ -114,6 +121,8 @@ test("code is never touched", () => {
 test("links keep their addresses, and their text may hold formulas", () => {
   assert.deepEqual(read("[price $5](https://e.test/$HOME)"), [["link", "https://e.test/$HOME"], ["text", "price $5"]]);
   assert.deepEqual(read("[area $x^2$](https://e.test/a)"), [["link", "https://e.test/a"], ["text", "area"], ["inlineMath", "x^2"]]);
+  assert.deepEqual(read("[\\(x](https://e.test/\\))"), [["link", "https://e.test/)"], ["text", "(x"]]);
+  assert.deepEqual(read("[area \\(x^2\\)](https://e.test/a)"), [["link", "https://e.test/a"], ["text", "area"], ["inlineMath", "x^2"]]);
   assert.deepEqual(read("<https://e.test/$HOME>"), [["link", "https://e.test/$HOME"], ["text", "https://e.test/$HOME"]]);
   assert.deepEqual(read("[label][price $5]\n\n[price $5]: https://e.test/a").filter(([type]) => type === "definition"), [["definition", "https://e.test/a"]]);
   assert.deepEqual(read("[label][ref]\n\n[ref]: https://e.test/\\(x\\)").filter(([type]) => type === "definition"), [["definition", "https://e.test/(x)"]]);

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc",
-    "test": "node --test",
+    "test": "node --conditions=development --test",
     "tauri": "tauri"
   },
   "dependencies": {

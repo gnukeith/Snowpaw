@@ -27,7 +27,7 @@ interface Effects {
   check(construct: Construct, ok: State, nok: State): State;
 }
 interface Construct {
-  name: string;
+  name?: string;
   tokenize: (this: unknown, effects: Effects, ok: State, nok: State) => State;
   previous?: (this: unknown, code: Code) => boolean;
   partial?: boolean;
@@ -44,23 +44,35 @@ const isDigit = (code: Code) => code !== null && code >= 48 && code <= 57;
     read as text. */
 const longest = 10_000;
 
-/** A dollar sign that closes a formula: one with no digit after it. Only
-    looked at, never kept. */
-const closing: Construct = {
-  name: "formulaClosing",
-  partial: true,
-  tokenize(effects, ok, nok) {
-    return (code) => {
-      effects.consume(code);
-      return (after) => (isDigit(after) ? nok(after) : ok(after));
-    };
-  },
-};
+/** A look ahead: reads the character it starts on and decides on the one
+    after it. It reads inside a token of its own, because the reader allows
+    no character to be read outside one, and the reader throws away all it
+    read once it has decided. Unnamed, as the reader requires of a part
+    used only for looking. */
+function lookAt(decide: (next: Code) => boolean): Construct {
+  return {
+    partial: true,
+    tokenize(effects, ok, nok) {
+      return (code) => {
+        effects.enter("formulaLookAhead");
+        effects.consume(code);
+        effects.exit("formulaLookAhead");
+        return (next) => (decide(next) ? ok(next) : nok(next));
+      };
+    },
+  };
+}
 
-/* Every attempt to read a formula stops at the first delimiter it reaches,
-   which either closes it or shows it was not a formula. The stretches that
-   failed attempts read therefore never overlap, and the work stays in
-   proportion to the message however its delimiters are arranged. */
+/** A dollar sign that closes a formula: one with no digit after it. */
+const closing = lookAt((after) => !isDigit(after));
+
+/** A backslash followed by a bracket that opens a formula. */
+const openingBracket = lookAt((next) => next === 40 || next === 91);
+
+/* Every attempt to read a formula stops at the first delimiter of its own
+   kind that it reaches, which either closes it or shows it was not a
+   formula. Attempts of one kind therefore read stretches that do not pile
+   up on each other, and the work stays in proportion to the message. */
 
 /** Writes a formula's text: line endings as the reader's own, and the rest
     as math text, opened only when there is something to put in it, since
@@ -154,11 +166,17 @@ const bracket: Construct = {
   name: "formulaBracket",
   tokenize(effects, ok, nok) {
     const write = writer(effects);
-    let shut = 0;
+    // The look for the backslash and bracket that close this formula, made
+    // once its opening bracket is known.
+    let closer = closing;
     let size = 0;
     let empty = true;
+    let previous: Code = null;
     const inside: State = (code) => {
       if (code === null || ++size > longest) return nok(code);
+      // "](" is where a link's text ends and its address begins.
+      if (code === 40 && previous === 93) return nok(code);
+      previous = code;
       if (isLineEnding(code)) {
         write.lineEnding(code);
         return inside;
@@ -166,7 +184,7 @@ const bracket: Construct = {
       if (code === backslash) {
         // \( or \[ cannot stand inside a formula, so meeting one means this
         // was not a formula, and the reading stops there.
-        return effects.check(openingBracket, nok, () => effects.check(closingBracket(shut), close, (other) => {
+        return effects.check(openingBracket, nok, () => effects.check(closer, close, (other) => {
           // A backslash and what follows it are part of the formula, so
           // "\\)" is a line break and a bracket, not the end.
           write.text(other);
@@ -200,7 +218,8 @@ const bracket: Construct = {
       effects.consume(code);
       return (open) => {
         if (open !== 40 && open !== 91) return nok(open);
-        shut = open === 40 ? 41 : 93;
+        const shut = open === 40 ? 41 : 93;
+        closer = lookAt((next) => next === shut);
         effects.consume(open);
         effects.exit("mathTextSequence");
         return inside;
@@ -209,31 +228,6 @@ const bracket: Construct = {
   },
 };
 
-/** A backslash followed by a bracket that opens a formula. */
-const openingBracket: Construct = {
-  name: "formulaOpeningBracket",
-  partial: true,
-  tokenize(effects, ok, nok) {
-    return (code) => {
-      effects.consume(code);
-      return (next) => (next === 40 || next === 91 ? ok(next) : nok(next));
-    };
-  },
-};
-
-/** A backslash followed by the bracket that closes this formula. */
-function closingBracket(shut: number): Construct {
-  return {
-    name: "formulaClosingBracket",
-    partial: true,
-    tokenize(effects, ok, nok) {
-      return (code) => {
-        effects.consume(code);
-        return (next) => (next === shut ? ok(next) : nok(next));
-      };
-    },
-  };
-}
 
 /** The most formulas one message may have drawn. More, and every one is
     shown as written: each formula costs a render of its own. */
