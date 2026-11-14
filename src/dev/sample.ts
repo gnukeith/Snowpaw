@@ -121,6 +121,17 @@ export function sample(): { agents: Agent[]; work: AllWork } {
           engineer,
           "Fixed. The parser treated every date before 1970 as an error. All 42 tests pass now, and Marketing has added a line to Thursday's release notes.",
         ),
+        {
+          ...say(
+            12,
+            engineer,
+            "This only stayed broken because nothing ran the tests for a week. I could run them every morning and tell you what failed.",
+          ),
+          proposal: {
+            task: task(1, 7, "task", "Run the full test suite and tell you what failed", "Every day"),
+            scheduled: false,
+          },
+        },
         say(95, "user", "nice, thank you"),
       ],
       steps: [
@@ -155,7 +166,6 @@ export function sample(): { agents: Agent[]; work: AllWork } {
       ],
       diff,
       tasks: [
-        task(1, 7, "task", "Run the full test suite and tell you what failed", "Every day"),
         task(3, 9, "reminder", "Read Thursday's release notes before they go out"),
         task(5, 18, "task", "Update dependencies and open a change for you to read", "Every week"),
       ],

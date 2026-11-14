@@ -13,7 +13,14 @@ import {
   saveAgents,
   type Agent,
 } from "./data/agents";
-import { userMessage, workOf, type AllWork } from "./data/conversation";
+import {
+  acceptProposal,
+  userMessage,
+  workOf,
+  type AllWork,
+  type Message,
+  type TaskDraft,
+} from "./data/conversation";
 import { parseButtonLayout, type ButtonLayout } from "./data/frame";
 import { loadName, loadPicture, saveName, savePicture } from "./data/profile";
 import { applyTheme, loadTheme, saveTheme } from "./theme/theme";
@@ -21,6 +28,7 @@ import { AgentEditor } from "./views/AgentEditor";
 import { AgentPanel } from "./views/AgentPanel";
 import { Conversation } from "./views/Conversation";
 import { Settings } from "./views/Settings";
+import { TaskEditor } from "./views/TaskEditor";
 
 export function App() {
   const [theme, setTheme] = useState(loadTheme);
@@ -37,6 +45,8 @@ export function App() {
   // The agent being edited, "new" for one being made, or null.
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // The proposed task being changed before it is agreed to, and whose it is.
+  const [proposing, setProposing] = useState<{ agentId: string; message: Message }>();
   const [panelOpen, setPanelOpen] = useState(false);
   // The window buttons to draw. None until the Rust side says the window has
   // no title bar, and none ever where it kept one.
@@ -108,6 +118,11 @@ export function App() {
     setAgents(agents.map((other) => (other.id === agent.id ? { ...agent, pinned: !agent.pinned } : other)));
   }
 
+  function schedule(agentId: string, message: Message, task: TaskDraft) {
+    setWork((all) => ({ ...all, [agentId]: acceptProposal(workOf(all, agentId), message.id, task) }));
+    setProposing(undefined);
+  }
+
   function remove(agent: Agent) {
     setAgents(agents.filter((other) => other.id !== agent.id));
     setWork(({ [agent.id]: _gone, ...rest }) => rest);
@@ -157,6 +172,10 @@ export function App() {
                   return { ...all, [selected.id]: { ...mine, messages: [...mine.messages, userMessage(text)] } };
                 })
               }
+              onSchedule={(message) =>
+                message.proposal && schedule(selected.id, message, message.proposal.task)
+              }
+              onEditProposal={(message) => setProposing({ agentId: selected.id, message })}
               onTogglePin={() => togglePin(selected)}
               onEdit={() => setEditing(selected)}
             />
@@ -190,6 +209,13 @@ export function App() {
             onSave={save}
             onDelete={remove}
             onClose={() => setEditing(null)}
+          />
+        )}
+        {proposing?.message.proposal && (
+          <TaskEditor
+            task={proposing.message.proposal.task}
+            onSchedule={(task) => schedule(proposing.agentId, proposing.message, task)}
+            onClose={() => setProposing(undefined)}
           />
         )}
         {settingsOpen && (

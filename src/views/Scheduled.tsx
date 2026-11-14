@@ -1,15 +1,7 @@
 import { Empty } from "../components/Empty";
 import type { Agent } from "../data/agents";
-import type { Task } from "../data/conversation";
+import { taskLine, type Task } from "../data/conversation";
 import styles from "./Scheduled.module.css";
-
-const due = new Intl.DateTimeFormat(undefined, {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit",
-});
 
 /** What an agent is set to do later, soonest first. */
 export function Scheduled({ agent, tasks }: { agent: Agent; tasks: Task[] }) {
@@ -28,12 +20,7 @@ export function Scheduled({ agent, tasks }: { agent: Agent; tasks: Task[] }) {
         .map((task) => (
           <li key={task.id} className={styles.task}>
             <p className={styles.title}>{task.title}</p>
-            <p className={styles.when}>
-              {task.kind === "reminder" ? "Reminder" : "Task"}
-              {" · "}
-              <time dateTime={new Date(task.at).toISOString()}>{due.format(task.at)}</time>
-              {task.repeats && ` · ${task.repeats}`}
-            </p>
+            <p className={styles.when}>{taskLine(task)}</p>
           </li>
         ))}
     </ul>

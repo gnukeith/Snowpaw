@@ -113,6 +113,36 @@
   width: var(--avatar-md);
 }
 
+/* A task the agent would like to schedule, waiting for a yes. It hangs under
+   the message that proposes it, past the face beside that message. */
+.proposal {
+  display: grid;
+  gap: var(--space-1);
+  align-self: flex-start;
+  max-width: min(var(--prose-width), var(--bubble-width));
+  margin-inline-start: calc(var(--avatar-md) + var(--space-2));
+  padding: var(--space-3);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-bubble);
+}
+
+.status {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.task {
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
 /* Messages are the one part of the app that is text to read and copy. */
 .theirs {
   max-width: min(var(--prose-width), var(--bubble-width));

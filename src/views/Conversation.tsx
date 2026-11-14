@@ -9,7 +9,8 @@ import {
 import { Avatar } from "../components/Avatar";
 import { IconButton } from "../components/IconButton";
 import { initials, maxPinned, type Agent } from "../data/agents";
-import type { Message } from "../data/conversation";
+import { Button } from "../components/Button";
+import { taskLine, type Message } from "../data/conversation";
 import styles from "./Conversation.module.css";
 
 interface Props {
@@ -27,6 +28,10 @@ interface Props {
   /** The window's buttons, when this view is the one in the window's corner. */
   windowButtons: ReactNode;
   onSend: (text: string) => void;
+  /** Agrees to the task a message proposed, as proposed. */
+  onSchedule: (message: Message) => void;
+  /** Opens that task to be changed first. */
+  onEditProposal: (message: Message) => void;
   onTogglePin: () => void;
   onEdit: () => void;
 }
@@ -149,6 +154,23 @@ export function Conversation(props: Props) {
                   {message.text}
                 </p>
               </div>
+              {message.proposal && (
+                <div className={styles.proposal}>
+                  <p className={styles.status}>
+                    {message.proposal.scheduled ? "Scheduled" : "Needs your OK"}
+                  </p>
+                  <p className={styles.task}>{message.proposal.task.title}</p>
+                  <p className={styles.status}>{taskLine(message.proposal.task)}</p>
+                  {!message.proposal.scheduled && (
+                    <div className={styles.choices}>
+                      <Button primary onClick={() => props.onSchedule(message)}>
+                        Schedule it
+                      </Button>
+                      <Button onClick={() => props.onEditProposal(message)}>Edit first</Button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
