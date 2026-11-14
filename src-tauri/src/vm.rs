@@ -14,16 +14,19 @@ use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// A fixed absolute path, so a changed PATH cannot swap in another program.
 const QEMU: &str = "/usr/bin/qemu-system-x86_64";
 const CONTROL_SOCKET: &str = "qmp.sock";
+/// The kernel's limit on a unix socket path, including its closing zero byte.
+const MAX_SOCKET_PATH: usize = 108;
 
 /// How long QEMU gets to open its control socket after starting.
 const START_TIMEOUT: Duration = Duration::from_secs(5);
-/// How long any single control command may take.
+/// How long the control handshake, and then any one control command, may take.
 const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
 /// Screen captures are full PNG encodes inside QEMU; do not allow them back to back.
 const MIN_FRAME_INTERVAL: Duration = Duration::from_millis(400);
@@ -34,35 +37,55 @@ const MAX_FRAME_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_FRAME_WIDTH: u32 = 1920;
 const MAX_FRAME_HEIGHT: u32 = 1080;
 
+/// A running machine. Share it between threads: `kill` never waits for a
+/// capture that another thread has in progress.
 pub struct Vm {
-    // Declared first so the control connection closes before QEMU is killed.
-    qmp: Qmp<UnixStream>,
     process: Process,
+    screen: Mutex<Screen>,
+}
+
+/// A machine whose QEMU has been started but not yet connected to.
+pub struct Spawned(Process);
+
+struct Screen {
+    qmp: Qmp,
     frames: u64,
     last_frame: Option<Instant>,
 }
 
 /// The QEMU child and its private directory. Dropping it always cleans up both.
 struct Process {
-    child: Child,
+    child: Mutex<Child>,
     dir: PathBuf,
+}
+
+impl Process {
+    /// Kills QEMU and waits for it to be gone. Safe to call more than once.
+    fn kill(&self) {
+        let mut child = lock(&self.child);
+        // Kill, do not ask: this has to work when QEMU has stopped answering.
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    fn has_exited(&self) -> bool {
+        !matches!(lock(&self.child).try_wait(), Ok(None))
+    }
 }
 
 impl Drop for Process {
     fn drop(&mut self) {
-        // Kill, do not ask: this has to work when QEMU has stopped answering.
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.kill();
         let _ = fs::remove_dir_all(&self.dir);
     }
 }
 
 impl Vm {
-    /// Starts the virtual machine and connects to its control socket.
+    /// Starts QEMU. Returns as soon as the process exists.
     ///
     /// Call this from a thread that lives as long as the app: QEMU is told to
     /// exit when its parent dies, and Linux ties that to the spawning thread.
-    pub fn start() -> io::Result<Self> {
+    pub fn spawn() -> io::Result<Spawned> {
         let dir = session_dir()?;
         let child = Command::new(QEMU)
             .args(["-accel", "kvm", "-machine", "q35", "-cpu", "host", "-m", "2048", "-smp", "2"])
@@ -70,8 +93,7 @@ impl Vm {
             .args(["-nodefaults", "-no-user-config", "-nic", "none"])
             // The screen is read through the control socket, never shown or served by QEMU.
             .args(["-display", "none", "-vga", "virtio"])
-            // A relative path: QEMU runs inside the session directory, and
-            // unix socket paths are limited to 108 bytes.
+            // A relative path: QEMU runs inside the session directory.
             .args(["-qmp", &format!("unix:{CONTROL_SOCKET},server=on,wait=off")])
             .args(["-sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny"])
             .args(["-run-with", "exit-with-parent=on"])
@@ -81,35 +103,39 @@ impl Vm {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn();
-        let mut process = match child {
-            Ok(child) => Process { child, dir },
+        match child {
+            Ok(child) => Ok(Spawned(Process { child: Mutex::new(child), dir })),
             Err(error) => {
                 let _ = fs::remove_dir_all(&dir);
-                return Err(error);
+                Err(error)
             }
-        };
-        let qmp = Qmp::connect(control_socket(&mut process)?)?;
-        Ok(Self { qmp, process, frames: 0, last_frame: None })
+        }
+    }
+
+    /// Ends the machine at once, without asking the guest or QEMU.
+    pub fn kill(&self) {
+        self.process.kill();
     }
 
     /// True once QEMU is gone, whatever the reason.
-    pub fn has_exited(&mut self) -> bool {
-        !matches!(self.process.child.try_wait(), Ok(None))
+    pub fn has_exited(&self) -> bool {
+        self.process.has_exited()
     }
 
-    /// Captures the guest's screen as a PNG.
-    pub fn frame(&mut self) -> io::Result<Vec<u8>> {
-        if let Some(last) = self.last_frame {
+    /// Captures the guest's screen as a PNG. One capture runs at a time.
+    pub fn frame(&self) -> io::Result<Vec<u8>> {
+        let mut screen = lock(&self.screen);
+        if let Some(last) = screen.last_frame {
             thread::sleep(MIN_FRAME_INTERVAL.saturating_sub(last.elapsed()));
         }
-        self.last_frame = Some(Instant::now());
+        screen.last_frame = Some(Instant::now());
 
         // A new name every time: QEMU overwrites an existing file and follows
         // symlinks when it writes, so a name is never reused.
-        self.frames += 1;
-        let name = format!("frame-{}.png", self.frames);
+        screen.frames += 1;
+        let name = format!("frame-{}.png", screen.frames);
         let path = self.process.dir.join(&name);
-        let captured = self.qmp.execute("screendump", json!({ "filename": name, "format": "png" }));
+        let captured = screen.qmp.execute("screendump", json!({ "filename": name, "format": "png" }));
         let bytes = captured.and_then(|_| read_frame(&path));
         let _ = fs::remove_file(&path);
 
@@ -117,6 +143,22 @@ impl Vm {
         png_size(&bytes)?;
         Ok(bytes)
     }
+}
+
+impl Spawned {
+    /// Waits for QEMU to come up and connects to its control socket. This can
+    /// take seconds, so do it off the thread that called `Vm::spawn`.
+    pub fn connect(self) -> io::Result<Vm> {
+        let stream = control_socket(&self.0)?;
+        let qmp = Qmp::connect(stream, CONTROL_TIMEOUT)?;
+        Ok(Vm { process: self.0, screen: Mutex::new(Screen { qmp, frames: 0, last_frame: None }) })
+    }
+}
+
+/// Locks a mutex whether or not a thread panicked while holding it. Every use
+/// here must keep working after a panic so the machine can still be killed.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Creates this session's directory, readable by the current user only.
@@ -135,8 +177,13 @@ fn session_dir() -> io::Result<PathBuf> {
         other => other?,
     }
     remove_stale_sessions(&root);
-    let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
-    let dir = root.join(format!("vm-{}-{seconds}", std::process::id()));
+
+    // Nanoseconds, so two starts by one app never pick the same name.
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_nanos());
+    let dir = root.join(format!("vm-{}-{now}", std::process::id()));
+    if dir.join(CONTROL_SOCKET).as_os_str().len() >= MAX_SOCKET_PATH {
+        return Err(io::Error::other("the runtime directory path is too long for a socket"));
+    }
     // Fails if the directory already exists, so nothing can be planted in it first.
     private_dir(&dir)?;
     Ok(dir)
@@ -144,15 +191,38 @@ fn session_dir() -> io::Result<PathBuf> {
 
 /// Removes session directories whose app is no longer running. An app that
 /// is killed cannot clean up, and the directory may still hold a captured screen.
+///
+/// Deletes only what this module creates: a directory with a session's exact
+/// name, and inside it only the control socket and frame files. A directory
+/// that holds anything else is left where it is.
 fn remove_stale_sessions(root: &Path) {
-    let Ok(entries) = fs::read_dir(root) else { return };
-    for entry in entries.flatten() {
+    for entry in fs::read_dir(root).into_iter().flatten().flatten() {
         let name = entry.file_name();
-        let owner = name.to_str().and_then(|name| name.strip_prefix("vm-")?.split('-').next()?.parse::<u32>().ok());
-        if owner.is_some_and(|pid| !Path::new(&format!("/proc/{pid}")).exists()) {
-            let _ = fs::remove_dir_all(entry.path());
+        let Some(owner) = name.to_str().and_then(session_owner) else { continue };
+        let dir = entry.path();
+        let is_real_dir = fs::symlink_metadata(&dir).is_ok_and(|found| found.is_dir());
+        if !is_real_dir || Path::new(&format!("/proc/{owner}")).exists() {
+            continue;
         }
+        for file in fs::read_dir(&dir).into_iter().flatten().flatten() {
+            if file.file_name().to_str().is_some_and(is_session_file) {
+                let _ = fs::remove_file(file.path());
+            }
+        }
+        let _ = fs::remove_dir(&dir);
     }
+}
+
+/// The process id in a session directory name, `vm-<pid>-<time>`.
+fn session_owner(name: &str) -> Option<u32> {
+    let (pid, time) = name.strip_prefix("vm-")?.split_once('-')?;
+    let all_digits = |text: &str| !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit());
+    (all_digits(pid) && all_digits(time)).then(|| pid.parse().ok())?
+}
+
+fn is_session_file(name: &str) -> bool {
+    let frame = name.strip_prefix("frame-").and_then(|rest| rest.strip_suffix(".png"));
+    name == CONTROL_SOCKET || frame.is_some_and(|number| number.parse::<u64>().is_ok())
 }
 
 fn private_dir(path: &Path) -> io::Result<()> {
@@ -171,22 +241,17 @@ fn require_private(path: &Path) -> io::Result<()> {
 }
 
 /// Waits for QEMU to open its control socket, then connects to it.
-fn control_socket(process: &mut Process) -> io::Result<UnixStream> {
+fn control_socket(process: &Process) -> io::Result<UnixStream> {
     let path = process.dir.join(CONTROL_SOCKET);
     let deadline = Instant::now() + START_TIMEOUT;
-    let stream = loop {
+    loop {
         match UnixStream::connect(&path) {
-            Ok(stream) => break stream,
+            Ok(stream) => return Ok(stream),
             Err(error) if Instant::now() > deadline => return Err(error),
-            Err(_) if process.child.try_wait()?.is_some() => {
-                return Err(io::Error::other("QEMU exited while starting"));
-            }
+            Err(_) if process.has_exited() => return Err(io::Error::other("QEMU exited while starting")),
             Err(_) => thread::sleep(Duration::from_millis(20)),
         }
-    };
-    stream.set_read_timeout(Some(CONTROL_TIMEOUT))?;
-    stream.set_write_timeout(Some(CONTROL_TIMEOUT))?;
-    Ok(stream)
+    }
 }
 
 /// Reads a captured frame, refusing anything that is not a plain file of sane size.
@@ -208,18 +273,19 @@ fn read_frame(path: &Path) -> io::Result<Vec<u8>> {
 }
 
 /// Returns the width and height a PNG declares, or an error if the bytes do
-/// not start like a PNG or the size is outside the limits.
+/// not start with a complete PNG header or the size is outside the limits.
 ///
 /// This decides whether to hand the bytes to the webview's decoder. It does
 /// not check the rest of the file.
 fn png_size(bytes: &[u8]) -> io::Result<(u32, u32)> {
-    // Signature, then the first chunk: length 13, type IHDR, width, height.
-    const HEADER: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR";
-    if bytes.len() < HEADER.len() + 8 || !bytes.starts_with(HEADER) {
+    // Signature, then the first chunk: length 13, type IHDR, 13 bytes of
+    // header starting with width and height, and a 4 byte checksum.
+    const START: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR";
+    if bytes.len() < START.len() + 13 + 4 || !bytes.starts_with(START) {
         return Err(io::Error::other("the frame is not a PNG"));
     }
     let number = |at: usize| u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
-    let (width, height) = (number(HEADER.len()), number(HEADER.len() + 4));
+    let (width, height) = (number(START.len()), number(START.len() + 4));
     if (1..=MAX_FRAME_WIDTH).contains(&width) && (1..=MAX_FRAME_HEIGHT).contains(&height) {
         Ok((width, height))
     } else {
@@ -230,12 +296,42 @@ fn png_size(bytes: &[u8]) -> io::Result<(u32, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::symlink;
+    use std::sync::Arc;
 
+    /// The smallest byte string `png_size` accepts: a complete first chunk.
     fn png(width: u32, height: u32) -> Vec<u8> {
         let mut bytes = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
         bytes.extend(width.to_be_bytes());
         bytes.extend(height.to_be_bytes());
+        bytes.extend([8, 2, 0, 0, 0]);
+        bytes.extend([0; 4]);
         bytes
+    }
+
+    /// A private scratch directory, removed when the test ends.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("snowpaw-{name}-{}", std::process::id()));
+            private_dir(&dir).unwrap();
+            Self(dir)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn have_qemu() -> bool {
+        let found = Path::new("/dev/kvm").exists() && Path::new(QEMU).exists();
+        if !found {
+            eprintln!("skipped: needs KVM and QEMU");
+        }
+        found
     }
 
     #[test]
@@ -252,62 +348,108 @@ mod tests {
     }
 
     #[test]
-    fn png_size_rejects_other_data() {
+    fn png_size_rejects_other_and_truncated_data() {
         assert!(png_size(b"").is_err());
         assert!(png_size(b"GIF89a").is_err());
-        assert!(png_size(&png(720, 400)[..20]).is_err());
-        let mut wrong_chunk = png(720, 400);
+        let whole = png(720, 400);
+        assert!(png_size(&whole[..whole.len() - 1]).is_err(), "header chunk cut short");
+        let mut wrong_chunk = whole;
         wrong_chunk[12..16].copy_from_slice(b"IDAT");
         assert!(png_size(&wrong_chunk).is_err());
     }
 
     #[test]
-    fn read_frame_refuses_symlinks_and_oversized_files() {
-        let dir = std::env::temp_dir().join(format!("snowpaw-test-{}", std::process::id()));
-        private_dir(&dir).unwrap();
-        let target = dir.join("target.png");
+    fn read_frame_refuses_anything_but_a_plain_file_of_sane_size() {
+        let scratch = Scratch::new("frames");
+        let target = scratch.0.join("target.png");
         fs::write(&target, png(720, 400)).unwrap();
         assert_eq!(read_frame(&target).unwrap(), png(720, 400));
 
-        let link = dir.join("link.png");
-        std::os::unix::fs::symlink(&target, &link).unwrap();
-        assert!(read_frame(&link).is_err());
+        let link = scratch.0.join("link.png");
+        symlink(&target, &link).unwrap();
+        assert!(read_frame(&link).is_err(), "symlink");
 
-        let big = dir.join("big.png");
+        let big = scratch.0.join("big.png");
         fs::File::create(&big).unwrap().set_len(MAX_FRAME_BYTES + 1).unwrap();
-        assert!(read_frame(&big).is_err());
-        assert!(read_frame(&dir).is_err());
+        assert!(read_frame(&big).is_err(), "too large");
 
-        fs::remove_dir_all(&dir).unwrap();
+        let pipe = scratch.0.join("pipe.png");
+        assert!(Command::new("mkfifo").arg(&pipe).status().unwrap().success());
+        assert!(read_frame(&pipe).is_err(), "pipe");
+
+        assert!(read_frame(&scratch.0).is_err(), "directory");
+        assert!(read_frame(&scratch.0.join("missing.png")).is_err(), "missing");
     }
 
     #[test]
-    fn stale_sessions_are_removed_and_live_ones_kept() {
-        let root = std::env::temp_dir().join(format!("snowpaw-stale-{}", std::process::id()));
-        private_dir(&root).unwrap();
+    fn require_private_rejects_shared_directories_and_symlinks() {
+        let scratch = Scratch::new("private");
+        assert!(require_private(&scratch.0).is_ok());
+
+        let shared = scratch.0.join("shared");
+        DirBuilder::new().mode(0o755).create(&shared).unwrap();
+        fs::set_permissions(&shared, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        assert!(require_private(&shared).is_err(), "readable by others");
+
+        let link = scratch.0.join("link");
+        symlink(&scratch.0, &link).unwrap();
+        assert!(require_private(&link).is_err(), "symlink to a private directory");
+        assert!(require_private(&scratch.0.join("missing")).is_err());
+    }
+
+    #[test]
+    fn only_session_names_are_recognised() {
+        assert_eq!(session_owner("vm-123-456"), Some(123));
+        for name in ["vm-123", "vm-123-", "vm--456", "vm-123-notes", "vm-+123-456", "vm-123-456-7", "xvm-123-456", "notes"] {
+            assert_eq!(session_owner(name), None, "{name}");
+        }
+        assert!(is_session_file("qmp.sock") && is_session_file("frame-12.png"));
+        for name in ["frame-.png", "frame-x.png", "frame-1.png.bak", "notes.txt"] {
+            assert!(!is_session_file(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn stale_sessions_are_removed_and_everything_else_is_kept() {
+        let scratch = Scratch::new("stale");
+        let root = &scratch.0;
         // Above the kernel's highest possible pid, so never a running process.
         let dead = root.join("vm-4194999-1");
+        let dead_with_extras = root.join("vm-4194999-2");
         let live = root.join(format!("vm-{}-1", std::process::id()));
+        let lookalike = root.join("vm-4194999-notes");
         let unrelated = root.join("notes");
-        for dir in [&dead, &live, &unrelated] {
+        for dir in [&dead, &dead_with_extras, &live, &lookalike, &unrelated] {
             private_dir(dir).unwrap();
         }
         fs::write(dead.join("frame-1.png"), b"left behind").unwrap();
+        fs::write(dead.join("qmp.sock"), b"").unwrap();
+        fs::write(dead_with_extras.join("frame-1.png"), b"left behind").unwrap();
+        fs::write(dead_with_extras.join("diary.txt"), b"not ours").unwrap();
+        fs::write(lookalike.join("frame-1.png"), b"not a session").unwrap();
+        let outside = root.join("outside.txt");
+        fs::write(&outside, b"must survive").unwrap();
+        symlink(&outside, dead.join("frame-2.png")).unwrap();
+        symlink(&unrelated, root.join("vm-4194999-3")).unwrap();
 
-        remove_stale_sessions(&root);
-        assert!(!dead.exists());
-        assert!(live.exists() && unrelated.exists());
-        fs::remove_dir_all(&root).unwrap();
+        remove_stale_sessions(root);
+
+        assert!(!dead.exists(), "a dead session is removed");
+        assert!(outside.exists(), "a symlinked frame is unlinked, its target kept");
+        assert!(!dead_with_extras.join("frame-1.png").exists(), "its frames are removed");
+        assert!(dead_with_extras.join("diary.txt").exists(), "unknown files are kept");
+        assert!(live.exists(), "a running app's session is kept");
+        assert!(lookalike.join("frame-1.png").exists(), "a lookalike name is kept");
+        assert!(unrelated.exists(), "a symlink named like a session is not followed");
     }
 
-    /// Runs the real QEMU. Skipped where KVM or QEMU is missing.
+    /// Runs the real QEMU.
     #[test]
     fn starts_captures_the_screen_and_cleans_up() {
-        if !Path::new("/dev/kvm").exists() || !Path::new(QEMU).exists() {
-            eprintln!("skipped: needs KVM and QEMU");
+        if !have_qemu() {
             return;
         }
-        let mut vm = Vm::start().unwrap();
+        let vm = Vm::spawn().unwrap().connect().unwrap();
         let dir = vm.process.dir.clone();
         assert_eq!(fs::metadata(&dir).unwrap().mode() & 0o777, 0o700);
         assert!(!vm.has_exited());
@@ -323,9 +465,45 @@ mod tests {
         let left: Vec<_> = fs::read_dir(&dir).unwrap().map(|entry| entry.unwrap().file_name()).collect();
         assert_eq!(left, [CONTROL_SOCKET]);
 
-        let pid = vm.process.child.id();
+        let pid = lock(&vm.process.child).id();
         drop(vm);
         assert!(!dir.exists(), "the session directory is removed");
         assert!(!Path::new(&format!("/proc/{pid}")).exists(), "QEMU is gone");
+    }
+
+    /// Runs the real QEMU. Stopping must not wait for a capture in progress.
+    #[test]
+    fn kill_does_not_wait_for_a_capture() {
+        if !have_qemu() {
+            return;
+        }
+        let vm = Arc::new(Vm::spawn().unwrap().connect().unwrap());
+        vm.frame().unwrap();
+        // This capture now waits out the rate limit while holding the screen.
+        let capturing = thread::spawn({
+            let vm = Arc::clone(&vm);
+            move || vm.frame()
+        });
+        thread::sleep(Duration::from_millis(50));
+
+        let started = Instant::now();
+        vm.kill();
+        assert!(started.elapsed() < MIN_FRAME_INTERVAL / 2, "kill took {:?}", started.elapsed());
+        assert!(vm.has_exited());
+        assert!(capturing.join().unwrap().is_err(), "the capture fails once QEMU is gone");
+        assert!(vm.frame().is_err());
+    }
+
+    /// Runs the real QEMU. A machine that never connects leaves nothing behind.
+    #[test]
+    fn a_failed_start_cleans_up() {
+        if !have_qemu() {
+            return;
+        }
+        let spawned = Vm::spawn().unwrap();
+        let dir = spawned.0.dir.clone();
+        spawned.0.kill();
+        assert!(spawned.connect().is_err(), "QEMU died before the control socket was used");
+        assert!(!dir.exists());
     }
 }
