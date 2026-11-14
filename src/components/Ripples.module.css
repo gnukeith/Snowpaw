@@ -1,8 +1,8 @@
-/* Lies over the surface that is clicked and takes nothing from it: clicks go
-   through, and a ripple at the edge is cut off there. */
+/* Lies over the surface that is clicked, wherever it is put, and takes
+   nothing from it: clicks go through, and a ripple at the edge is cut off
+   there. */
 .layer {
-  position: absolute;
-  inset: 0;
+  position: relative;
   overflow: hidden;
   pointer-events: none;
 }
@@ -32,8 +32,8 @@
 
 /* The paw or heart, which grows as it drifts up and away. */
 .shape {
-  width: 40%;
-  height: 40%;
+  width: var(--ripple-shape);
+  height: var(--ripple-shape);
   fill: currentColor;
   rotate: var(--tilt);
   animation: drift var(--ripple-time) ease-out both;

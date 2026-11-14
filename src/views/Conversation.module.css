@@ -1,6 +1,4 @@
 .conversation {
-  /* Ripples are placed against it. */
-  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
@@ -58,6 +56,12 @@
   gap: var(--space-2);
   /* Its buttons are never squeezed: it gives way last. */
   min-width: max-content;
+}
+
+/* The messages and the ripples over them share the middle row. */
+.messages,
+.ripples {
+  grid-area: 2 / 1;
 }
 
 .messages {

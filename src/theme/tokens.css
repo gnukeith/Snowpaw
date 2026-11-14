@@ -35,9 +35,10 @@
   --icon-stroke: 1.5;
   --avatar-sm: var(--space-6);
   --avatar-md: var(--space-8);
-  /* The ripple under a click in a conversation: how wide it spreads, and
-     for how long. */
+  /* The ripple under a click in a conversation: how wide it spreads, how
+     much of that the paw or heart in it takes up, and for how long. */
   --ripple-size: calc(var(--unit) * 18);
+  --ripple-shape: 40%;
   --ripple-time: 700ms;
   --avatar-lg: calc(var(--unit) * 14);
   --avatar-xl: calc(var(--unit) * 20);
