@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import styles from "./Menu.module.css";
 
 export interface MenuItem {
@@ -22,25 +22,23 @@ export function Menu({ at, items, onClose }: Props) {
   const menu = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState(at);
 
-  useEffect(() => {
+  // Before the first paint: open, then measure, then place. Only an open
+  // popover has a size, and one asked for near the right or bottom edge has to
+  // be moved back inside the window.
+  useLayoutEffect(() => {
     // Focus goes back to where it was when the menu closes, as with a dialog.
     const opener = document.activeElement;
-    if (!menu.current?.matches(":popover-open")) menu.current?.showPopover();
-    menu.current?.querySelector<HTMLElement>("button:not([aria-disabled=true])")?.focus();
-    return () => {
-      if (opener instanceof HTMLElement) opener.focus();
-    };
-  }, []);
-
-  // Asked for near the right or bottom edge, the menu is moved back inside the
-  // window before it is painted.
-  useLayoutEffect(() => {
     if (!menu.current) return;
+    if (!menu.current.matches(":popover-open")) menu.current.showPopover();
     const { width, height } = menu.current.getBoundingClientRect();
     setPlace({
       x: Math.max(0, Math.min(at.x, innerWidth - width)),
       y: Math.max(0, Math.min(at.y, innerHeight - height)),
     });
+    menu.current.querySelector<HTMLElement>("button:not([aria-disabled=true])")?.focus();
+    return () => {
+      if (opener instanceof HTMLElement) opener.focus();
+    };
   }, [at.x, at.y]);
 
   function onKeyDown(event: KeyboardEvent) {

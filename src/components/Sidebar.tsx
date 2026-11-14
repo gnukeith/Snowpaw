@@ -1,4 +1,4 @@
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { initials, maxPinned, type Agent } from "../data/agents";
 import { workOf, type AllWork } from "../data/conversation";
 import { Avatar } from "./Avatar";
@@ -34,6 +34,22 @@ export function Sidebar(props: Props) {
   // The agent whose menu is open, and where it was asked for.
   const [menu, setMenu] = useState<{ agent: Agent; x: number; y: number }>();
 
+  const list = useRef<HTMLElement>(null);
+  // Pinning moves an agent's button between the pins and the list, which
+  // makes a new button of it. Focus that was on the old one follows it here.
+  const follow = useRef<string>(undefined);
+  useEffect(() => {
+    if (!follow.current) return;
+    const moved = [...(list.current?.querySelectorAll<HTMLElement>("[data-agent]") ?? [])];
+    moved.find((button) => button.dataset.agent === follow.current)?.focus();
+    follow.current = undefined;
+  }, [agents]);
+
+  function togglePin(agent: Agent) {
+    follow.current = agent.id;
+    props.onTogglePin(agent);
+  }
+
   // A right click, or the keyboard's menu key, on an agent.
   const openMenu = (agent: Agent) => (event: MouseEvent) => {
     event.preventDefault();
@@ -56,7 +72,7 @@ export function Sidebar(props: Props) {
   const current = (agent: Agent) => (agent.id === selected?.id ? "page" : undefined);
 
   return (
-    <nav className={styles.sidebar} aria-label="Agents">
+    <nav ref={list} className={styles.sidebar} aria-label="Agents">
       <div className={styles.tools} data-window-drag>
         {props.windowButtons}
         {/* The app's name, where a title bar would have had it. With window
@@ -92,6 +108,7 @@ export function Sidebar(props: Props) {
             <button
               key={agent.id}
               className={styles.pin}
+              data-agent={agent.id}
               aria-current={current(agent)}
               onClick={() => props.onSelect(agent)}
               onContextMenu={openMenu(agent)}
@@ -108,6 +125,7 @@ export function Sidebar(props: Props) {
           <button
             key={agent.id}
             className={styles.row}
+            data-agent={agent.id}
             aria-current={current(agent)}
             onClick={() => props.onSelect(agent)}
             onContextMenu={openMenu(agent)}
@@ -135,16 +153,19 @@ export function Sidebar(props: Props) {
       </button>
       {menu && (
         <Menu
+          // A menu asked for while another is open is a new menu, and the old
+          // one closing must not take the new one with it.
+          key={`${menu.agent.id} ${menu.x} ${menu.y}`}
           at={menu}
           items={[
             menu.agent.pinned
-              ? { label: "Unpin", onSelect: () => props.onTogglePin(menu.agent) }
+              ? { label: "Unpin", onSelect: () => togglePin(menu.agent) }
               : props.canPin
-                ? { label: "Pin", onSelect: () => props.onTogglePin(menu.agent) }
+                ? { label: "Pin", onSelect: () => togglePin(menu.agent) }
                 : { label: `Only ${maxPinned} agents can be pinned`, onSelect: () => {}, disabled: true },
             { label: "Edit", onSelect: () => props.onEdit(menu.agent) },
           ]}
-          onClose={() => setMenu(undefined)}
+          onClose={() => setMenu((open) => (open === menu ? undefined : open))}
         />
       )}
     </nav>
