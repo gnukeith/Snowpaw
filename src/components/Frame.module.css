@@ -1,0 +1,8 @@
+.frame {
+  display: block;
+  width: 100%;
+  height: var(--output-height);
+  border: 0;
+  border-radius: var(--radius-control);
+  margin-block: var(--space-2);
+}

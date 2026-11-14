@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "Snowpaw",
+        "create": false,
         "width": 1200,
         "height": 800,
         "minWidth": 720,
@@ -21,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; frame-src frame://localhost/frames/"
     }
   },
   "bundle": {

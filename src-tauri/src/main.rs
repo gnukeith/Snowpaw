@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod frame;
+mod plugin_frame;
 mod qmp;
 mod vm;
 
@@ -217,9 +218,26 @@ fn device_name() -> String {
 
 fn main() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol("frame", |ctx, request| {
+            plugin_frame::respond(request, |path| {
+                // iter() returns only exact embedded assets: no SPA fallback,
+                // filesystem reads, symlinks, or app-CSP rewriting.
+                ctx.app_handle().asset_resolver().iter()
+                    .find(|(key, _)| key.as_ref() == path)
+                    .map(|(_, bytes)| bytes.into_owned())
+            })
+        })
         .manage(Computer::default())
         .setup(|app| {
-            let window = app.get_webview_window("main").ok_or("there is no main window")?;
+            let config = &app.config().app.windows[0];
+            let app_url = if tauri::is_dev() {
+                app.config().build.dev_url.clone().ok_or("there is no dev URL")?
+            } else {
+                tauri::Url::parse("tauri://localhost/")?
+            };
+            let window = tauri::WebviewWindowBuilder::from_config(app, config)?
+                .on_navigation(move |url| plugin_frame::navigation(url, &app_url))
+                .build()?;
             app.manage(frame::open(&window));
             Ok(())
         })
