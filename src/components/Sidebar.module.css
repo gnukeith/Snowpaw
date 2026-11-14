@@ -14,6 +14,20 @@
   gap: var(--space-2);
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline-start: var(--space-2);
+  font-weight: var(--weight-strong);
+}
+
+.logo {
+  width: var(--avatar-sm);
+  height: var(--avatar-sm);
+  fill: var(--accent);
+}
+
 .spacer {
   flex: 1;
 }

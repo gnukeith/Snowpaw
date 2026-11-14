@@ -103,6 +103,11 @@ export function App() {
     setEditing(null);
   }
 
+  function togglePin(agent: Agent) {
+    if (!agent.pinned && !canPin(agents)) return;
+    setAgents(agents.map((other) => (other.id === agent.id ? { ...agent, pinned: !agent.pinned } : other)));
+  }
+
   function remove(agent: Agent) {
     setAgents(agents.filter((other) => other.id !== agent.id));
     setWork(({ [agent.id]: _gone, ...rest }) => rest);
@@ -123,7 +128,10 @@ export function App() {
         selected={selected}
         user={user}
         unsaved={unsaved}
-        windowButtons={<WindowButtons buttons={buttons?.start ?? []} />}
+        windowButtons={buttons?.start.length ? <WindowButtons buttons={buttons.start} /> : null}
+        canPin={canPin(agents)}
+        onTogglePin={togglePin}
+        onEdit={setEditing}
         onSelect={(agent) => setSelectedId(agent.id)}
         onCreate={() => setEditing("new")}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -149,7 +157,7 @@ export function App() {
                   return { ...all, [selected.id]: { ...mine, messages: [...mine.messages, userMessage(text)] } };
                 })
               }
-              onTogglePin={() => save({ ...selected, pinned: !selected.pinned })}
+              onTogglePin={() => togglePin(selected)}
               onEdit={() => setEditing(selected)}
             />
           ) : (

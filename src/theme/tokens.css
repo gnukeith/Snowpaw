@@ -45,6 +45,7 @@
   --settings-nav-width: calc(var(--unit) * 50);
   --setting-width: calc(var(--unit) * 50);
   --dialog-width: calc(var(--unit) * 100);
+  --menu-width: calc(var(--unit) * 40);
   --dialog-height: calc(var(--unit) * 120);
   /* Tallest a block of output gets before it scrolls. */
   --output-height: calc(var(--unit) * 60);

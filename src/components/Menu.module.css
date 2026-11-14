@@ -1,0 +1,41 @@
+/* A popover sits in the middle of the window unless told otherwise. This one
+   goes where it was asked for: `left` and `top` are set on the element. */
+.menu {
+  position: fixed;
+  inset: auto;
+  flex-direction: column;
+  gap: var(--hairline);
+  min-width: var(--menu-width);
+  margin: 0;
+  padding: var(--space-1);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-dialog);
+}
+
+/* Only while open: a closed popover must keep its default `display: none`. */
+.menu:popover-open {
+  display: flex;
+}
+
+.item {
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-nested);
+  background: none;
+  text-align: start;
+  white-space: nowrap;
+}
+
+.item:hover,
+.item:focus-visible {
+  background: var(--hover);
+}
+
+.item[aria-disabled="true"] {
+  background: none;
+  color: var(--text-muted);
+}
