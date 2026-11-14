@@ -134,11 +134,25 @@ fn session_dir() -> io::Result<PathBuf> {
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => require_private(&root)?,
         other => other?,
     }
+    remove_stale_sessions(&root);
     let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_secs());
     let dir = root.join(format!("vm-{}-{seconds}", std::process::id()));
     // Fails if the directory already exists, so nothing can be planted in it first.
     private_dir(&dir)?;
     Ok(dir)
+}
+
+/// Removes session directories whose app is no longer running. An app that
+/// is killed cannot clean up, and the directory may still hold a captured screen.
+fn remove_stale_sessions(root: &Path) {
+    let Ok(entries) = fs::read_dir(root) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let owner = name.to_str().and_then(|name| name.strip_prefix("vm-")?.split('-').next()?.parse::<u32>().ok());
+        if owner.is_some_and(|pid| !Path::new(&format!("/proc/{pid}")).exists()) {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 fn private_dir(path: &Path) -> io::Result<()> {
@@ -265,6 +279,25 @@ mod tests {
         assert!(read_frame(&dir).is_err());
 
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn stale_sessions_are_removed_and_live_ones_kept() {
+        let root = std::env::temp_dir().join(format!("snowpaw-stale-{}", std::process::id()));
+        private_dir(&root).unwrap();
+        // Above the kernel's highest possible pid, so never a running process.
+        let dead = root.join("vm-4194999-1");
+        let live = root.join(format!("vm-{}-1", std::process::id()));
+        let unrelated = root.join("notes");
+        for dir in [&dead, &live, &unrelated] {
+            private_dir(dir).unwrap();
+        }
+        fs::write(dead.join("frame-1.png"), b"left behind").unwrap();
+
+        remove_stale_sessions(&root);
+        assert!(!dead.exists());
+        assert!(live.exists() && unrelated.exists());
+        fs::remove_dir_all(&root).unwrap();
     }
 
     /// Runs the real QEMU. Skipped where KVM or QEMU is missing.
