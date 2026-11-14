@@ -20,15 +20,27 @@ export interface Step {
   at: number;
 }
 
+/** Something an agent will do later, or will remind the user of. */
+export interface Task {
+  id: string;
+  kind: "task" | "reminder";
+  title: string;
+  /** When it is next due, in milliseconds since the epoch. */
+  at: number;
+  /** How often it comes round again, in words. A one-off has none. */
+  repeats?: string;
+}
+
 /** Everything the app holds about one agent's work. */
 export interface Work {
   messages: Message[];
   steps: Step[];
   /** Every change the agent made to files, as one unified diff. */
   diff: string;
+  tasks: Task[];
 }
 
-export const noWork: Work = { messages: [], steps: [], diff: "" };
+export const noWork: Work = { messages: [], steps: [], diff: "", tasks: [] };
 
 /** Each agent's work, by the agent's id. */
 export type AllWork = Record<string, Work>;

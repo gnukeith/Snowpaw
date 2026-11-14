@@ -7,6 +7,7 @@ import { Activity } from "./Activity";
 import { Changes } from "./Changes";
 import styles from "./AgentPanel.module.css";
 import { Computer } from "./Computer";
+import { Scheduled } from "./Scheduled";
 
 interface Props {
   agent: Agent;
@@ -15,7 +16,7 @@ interface Props {
 }
 
 /* To add a tab, add its name here and its view below. */
-const tabs = ["computer", "activity", "changes"] as const;
+const tabs = ["computer", "activity", "changes", "scheduled"] as const;
 
 /** What an agent is doing, beside its conversation. */
 export function AgentPanel({ agent, work, onClose }: Props) {
@@ -54,6 +55,7 @@ export function AgentPanel({ agent, work, onClose }: Props) {
           {tab === "computer" && <Computer />}
           {tab === "activity" && <Activity agent={agent} steps={work.steps} />}
           {tab === "changes" && <Changes agent={agent} diff={work.diff} />}
+          {tab === "scheduled" && <Scheduled agent={agent} tasks={work.tasks} />}
         </div>
       </div>
     </aside>

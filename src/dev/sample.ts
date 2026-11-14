@@ -2,7 +2,13 @@
    app can be looked at with something in it. Nothing here is real, and a
    release build does not include this file. */
 import type { Agent } from "../data/agents";
-import { noWork, type AllWork, type Message, type Step } from "../data/conversation";
+import {
+  noWork,
+  type AllWork,
+  type Message,
+  type Step,
+  type Task,
+} from "../data/conversation";
 
 const prefix = "sample-";
 
@@ -79,6 +85,14 @@ export function sample(): { agents: Agent[]; work: AllWork } {
     at: start + minutes * minute,
   });
 
+  /** Due at `hourOfDay` o'clock, `days` days from today. */
+  const task = (days: number, hourOfDay: number, kind: Task["kind"], title: string, repeats?: string): Task => {
+    const due = new Date();
+    due.setDate(due.getDate() + days);
+    due.setHours(hourOfDay, 0, 0, 0);
+    return { id: `${prefix}task-${++count}`, kind, title, at: due.getTime(), repeats };
+  };
+
   const work: AllWork = {
     [engineer.id]: {
       messages: [
@@ -140,6 +154,11 @@ export function sample(): { agents: Agent[]; work: AllWork } {
         ),
       ],
       diff,
+      tasks: [
+        task(1, 7, "task", "Run the full test suite and tell you what failed", "Every day"),
+        task(3, 9, "reminder", "Read Thursday's release notes before they go out"),
+        task(5, 18, "task", "Update dependencies and open a change for you to read", "Every week"),
+      ],
     },
     [marketing.id]: {
       ...noWork,
@@ -160,6 +179,7 @@ export function sample(): { agents: Agent[]; work: AllWork } {
     [health.id]: {
       ...noWork,
       messages: [say(60, health, "You asked me to remind you to stretch. It has been two hours.")],
+      tasks: [task(0, 23, "reminder", "Stretch", "Every 2 hours")],
     },
   };
 
