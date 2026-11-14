@@ -1,0 +1,63 @@
+/* Every size, radius and colour in the app comes from this file.
+   Components use these names and never their own numbers. */
+:root {
+  color-scheme: light dark;
+
+  /* The one number that recolours the whole app. Set from Settings. */
+  --hue: 250;
+
+  /* Spacing: multiples of a single unit. */
+  --unit: 4px;
+  --space-1: var(--unit);
+  --space-2: calc(var(--unit) * 2);
+  --space-3: calc(var(--unit) * 3);
+  --space-4: calc(var(--unit) * 4);
+  --space-6: calc(var(--unit) * 6);
+  --space-8: calc(var(--unit) * 8);
+
+  /* Edges. One gap separates the window from its panels and a panel from
+     the controls inside it. Corners stay concentric: a corner nested inside
+     another is the outer radius minus the gap between them. */
+  --edge: var(--space-2);
+  --hairline: 1px;
+  --radius-panel: calc(var(--unit) * 3.5);
+  --radius-control: calc(var(--radius-panel) - var(--edge));
+  --radius-nested: calc(var(--radius-control) - var(--hairline) * 2);
+
+  /* Fixed sizes. */
+  --control-height: var(--space-8);
+  --icon-size: var(--space-4);
+  --sidebar-width: calc(var(--unit) * 60);
+  --settings-nav-width: calc(var(--unit) * 50);
+  --content-width: calc(var(--unit) * 160);
+
+  /* Type. */
+  --font: system-ui, sans-serif;
+  --text-sm: 12px;
+  --text-md: 14px;
+  --text-lg: 20px;
+  --leading: 1.45;
+  --weight-medium: 500;
+  --weight-strong: 600;
+
+  /* Colour. Neutrals carry a trace of the hue so the accent never looks
+     pasted on. Each pair is light value, then dark value. */
+  --bg: light-dark(oklch(96.5% 0.006 var(--hue)), oklch(17% 0.012 var(--hue)));
+  --surface: light-dark(oklch(99.5% 0.002 var(--hue)), oklch(21.5% 0.014 var(--hue)));
+  --border: light-dark(oklch(91% 0.008 var(--hue)), oklch(29% 0.016 var(--hue)));
+  --text: light-dark(oklch(24% 0.02 var(--hue)), oklch(94% 0.008 var(--hue)));
+  --text-muted: light-dark(oklch(52% 0.02 var(--hue)), oklch(70% 0.015 var(--hue)));
+  --accent: light-dark(oklch(56% 0.17 var(--hue)), oklch(74% 0.13 var(--hue)));
+  --hover: color-mix(in oklch, var(--text) 6%, transparent);
+  --selected: color-mix(in oklch, var(--accent) 14%, transparent);
+  --shadow-raised: 0 var(--hairline) calc(var(--unit) / 2) color-mix(in oklch, black 14%, transparent);
+}
+
+/* "System" follows the desktop. Light and Dark pin the scheme. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}

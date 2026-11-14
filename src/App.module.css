@@ -1,0 +1,14 @@
+.frame {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  height: 100%;
+}
+
+/* The sidebar already keeps one edge of space on its own right side. */
+.panel {
+  margin: var(--edge) var(--edge) var(--edge) 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-panel);
+}
