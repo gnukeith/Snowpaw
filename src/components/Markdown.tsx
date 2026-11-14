@@ -2,7 +2,7 @@ import { Component, createContext, lazy, Suspense, useContext, useMemo, type Com
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { markFormulas } from "../data/formulas";
+import { markFormulas, mostFormulas } from "../data/formulas";
 import { blockFor } from "../plugins/index";
 import type { BlockProps } from "../plugins/types";
 import styles from "./Markdown.module.css";
@@ -35,8 +35,13 @@ export function Markdown({ text }: { text: string }) {
 function Read({ text }: { text: string }) {
   // Formulas are looked for only while something draws them. Otherwise a
   // dollar sign is a dollar sign.
-  const formulas = blockFor("math", useContext(PluginsOff)) !== undefined;
-  const marked = useMemo(() => (formulas ? markFormulas(text) : text), [formulas, text]);
+  const drawn = blockFor("math", useContext(PluginsOff)) !== undefined;
+  const { marked, formulas } = useMemo(() => {
+    if (!drawn) return { marked: text, formulas: false };
+    const found = markFormulas(text);
+    // Past the limit, every dollar sign is read as a dollar sign.
+    return { marked: found.text, formulas: found.formulas <= mostFormulas };
+  }, [drawn, text]);
   return (
     <div className={styles.markdown}>
       <ReactMarkdown remarkPlugins={formulas ? withFormulas : plain} components={components}>

@@ -4,7 +4,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
-import { markFormulas } from "../src/data/formulas.ts";
+import { markFormulas, mostFormulas } from "../src/data/formulas.ts";
 
 /* Each case is read the way a message is: marked, then parsed by the same
    Markdown reader with math switched on. What matters is what the reader
@@ -19,10 +19,11 @@ function read(source) {
       found.push([node.type, node.value, ...(inList ? ["in list"] : [])]);
       return;
     }
+    if (node.type === "link") found.push(["link", node.url]);
     if (node.type === "text" && node.value.trim()) found.push(["text", node.value.trim(), ...(inList ? ["in list"] : [])]);
     for (const child of node.children ?? []) walk(child, inList || node.type === "listItem");
   };
-  walk(reader.parse(markFormulas(source)), false);
+  walk(reader.parse(markFormulas(source).text), false);
   return found;
 }
 
@@ -42,11 +43,16 @@ test("prices are not formulas", () => {
   assert.deepEqual(read("| a | b |\n| - | - |\n| $24,000 | $27,202 |").filter(([type]) => type !== "text" || /\$/.test(type)), []);
 });
 
-test("a dollar sign inside a formula stays inside it", () => {
-  assert.deepEqual(read("$\\text{price \\$5}$ ok"), [["inlineMath", "\\text{price {\\char36}5}"], ["text", "ok"]]);
-  assert.deepEqual(read("\\(\\text{price \\$5}\\)"), [["inlineMath", "\\text{price {\\char36}5}"]]);
-  assert.deepEqual(read("$a\\$b$"), [["inlineMath", "a{\\char36}b"]]);
+test("what is inside a formula reaches it exactly as written", () => {
+  assert.deepEqual(read("$\\text{price \\$5}$ ok"), [["inlineMath", "\\text{price \\$5}"], ["text", "ok"]]);
+  assert.deepEqual(read("\\(\\text{price \\$5}\\)"), [["inlineMath", "\\text{price \\$5}"]]);
+  assert.deepEqual(read("$a\\$b$"), [["inlineMath", "a\\$b"]]);
+  assert.deepEqual(read("\\(\\text{$x$}\\)"), [["inlineMath", "\\text{$x$}"]]);
+  assert.deepEqual(read("\\(\\text{a\\\\$x$}\\)"), [["inlineMath", "\\text{a\\\\$x$}"]]);
+  assert.deepEqual(read("\\[\\text{$$x$$}\\]"), [["math", "\\text{$$x$$}"]]);
   assert.deepEqual(read("\\$5 and $x$"), [["text", "$5 and"], ["inlineMath", "x"]]);
+  // Two backslashes are an escaped backslash: the dollar sign after them closes.
+  assert.deepEqual(read("$a\\\\$ then"), [["inlineMath", "a\\\\"], ["text", "then"]]);
 });
 
 test("a formula does not reach across a blank line", () => {
@@ -85,6 +91,26 @@ test("a formula in a list item or a quote stays in it", () => {
     ["text", "more", "in list"],
   ]);
   assert.deepEqual(read("> $$z$$"), [["math", "z"]]);
+  assert.deepEqual(read("> $$\n> x\n> $$"), [["math", "x"]]);
+  assert.deepEqual(read("> \\[\n> y = 1\n> \\]"), [["math", "y = 1"]]);
+  assert.deepEqual(read("- item\n\n  > $$\n  > z\n  > $$"), [["text", "item", "in list"], ["math", "z", "in list"]]);
+  // A ">" that is part of the formula, not a quote, stays.
+  assert.deepEqual(read("$$\na\n> b\n$$"), [["math", "a\n> b"]]);
+});
+
+test("links keep their addresses, and their text may hold formulas", () => {
+  assert.deepEqual(read("[price $5](https://e.test/$HOME)"), [["link", "https://e.test/$HOME"], ["text", "price $5"]]);
+  assert.deepEqual(read("[area $x^2$](https://e.test/a)"), [["link", "https://e.test/a"], ["text", "area"], ["inlineMath", "x^2"]]);
+  assert.deepEqual(read("<https://e.test/$HOME>"), [["link", "https://e.test/$HOME"], ["text", "https://e.test/$HOME"]]);
+  assert.deepEqual(read("see https://e.test/$HOME now"), [["text", "see"], ["link", "https://e.test/$HOME"], ["text", "https://e.test/$HOME"], ["text", "now"]]);
+});
+
+test("a message with too many formulas is read without them", () => {
+  const many = "$x$ ".repeat(mostFormulas + 1);
+  const found = markFormulas(many);
+  assert.equal(found.formulas, mostFormulas + 1);
+  assert.equal(found.text, many);
+  assert.equal(markFormulas("$x$ ".repeat(mostFormulas)).formulas, mostFormulas);
 });
 
 test("code is never touched", () => {
@@ -101,16 +127,25 @@ test("code is never touched", () => {
 
 test("text with nothing to mark comes back unchanged", () => {
   for (const text of ["", "plain", "line one\nline two\n", "a\n\nb", "\n", "\n\n"]) {
-    assert.equal(markFormulas(text), text);
+    assert.equal(markFormulas(text).text, text);
   }
 });
 
 test("the work grows with the message and no faster", () => {
   // Each of these made an earlier version search the rest of the message
   // again for every dollar sign or bracket in it.
-  for (const unit of ["$1", "\\(", "\\[", "$a ", "$$a"]) {
+  const cases = {
+    "$1": (n) => "$1".repeat(n),
+    "\\(": (n) => "\\(".repeat(n),
+    "\\[": (n) => "\\[".repeat(n),
+    "$a ": (n) => "$a ".repeat(n),
+    "$$a": (n) => "$$a".repeat(n),
+    // A long run of spaces before many formulas on one line.
+    "prefix": (n) => "a\n" + " ".repeat(6 * n) + "$$x$$".repeat(n),
+  };
+  for (const [unit, make] of Object.entries(cases)) {
     const time = (count) => {
-      const text = unit.repeat(count);
+      const text = make(count);
       const begun = performance.now();
       markFormulas(text);
       return performance.now() - begun;
