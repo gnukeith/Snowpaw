@@ -81,6 +81,9 @@ export function ConnectionForm({ id, connection, onSave, onRemove, onClose, auto
   // Shown before anything is sent, and while it is not yet known whether a
   // key is saved: a warning that comes after the key has gone is too late.
   const inTheClear = sendsKeyInTheClear(address) && (typed || keySaved !== false);
+  // A provider that wants a key is not tried without one. Most would turn the
+  // attempt down, but one whose list of models is public would look connected.
+  const needsKey = preset.key === "needed" && !typed && keySaved === false;
 
   useEffect(() => {
     shown.current = true;
@@ -249,7 +252,7 @@ export function ConnectionForm({ id, connection, onSave, onRemove, onClose, auto
               setOutcome({ state: "idle" });
             }}
           />
-          <Button primary={!kept} type="submit" disabled={!address || working}>
+          <Button primary={!kept} type="submit" disabled={!address || working || needsKey}>
             Connect
           </Button>
         </div>

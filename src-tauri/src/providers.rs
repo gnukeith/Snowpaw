@@ -38,6 +38,11 @@ pub(crate) struct Address(Url);
 
 impl Address {
     pub(crate) fn parse(address: &str) -> Result<Self, Failure> {
+        // The URL parser drops tabs and line breaks anywhere in its input, so
+        // "api.exa\nmple.com" would quietly become another host. Refuse them.
+        if address.chars().any(char::is_control) {
+            return Err(Failure::new("address"));
+        }
         let url = Url::parse(address).map_err(|_| Failure::new("address"))?;
         // URL parsing erases empty user info, so check the authority as well.
         let authority = address.split_once(':').map(|(_, rest)| {
@@ -253,7 +258,8 @@ mod tests {
     #[test]
     fn validates_addresses_and_normalizes_origins() {
         for address in ["", "localhost:1234", "file:///tmp/a", "ftp://example.com", "https://",
-            "https://user@example.com", "https://:pass@example.com", "https://@example.com", "https:@example.com"]
+            "https://user@example.com", "https://:pass@example.com", "https://@example.com", "https:@example.com",
+            "https://api.exa\nmple.com/v1", "https://api.example.com/v1\t", "https://api.example.com\u{0}/v1"]
         {
             assert_eq!(Address::parse(address).err(), Some(Failure::new("address")));
         }
