@@ -52,6 +52,8 @@
   --text: light-dark(oklch(24% 0.02 var(--hue)), oklch(94% 0.008 var(--hue)));
   --text-muted: light-dark(oklch(52% 0.02 var(--hue)), oklch(70% 0.015 var(--hue)));
   --accent: light-dark(oklch(56% 0.17 var(--hue)), oklch(74% 0.13 var(--hue)));
+  --danger: light-dark(oklch(52% 0.19 25), oklch(74% 0.15 25));
+  --on-accent: light-dark(oklch(99% 0.005 var(--hue)), oklch(18% 0.02 var(--hue)));
   --hover: color-mix(in oklch, var(--text) 6%, transparent);
   --selected: color-mix(in oklch, var(--accent) 14%, transparent);
   /* Every hue the accent can take, at one lightness, for the hue picker. */

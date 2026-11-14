@@ -32,6 +32,7 @@ export function Sidebar({ view, onNavigate }: Props) {
         Snowpaw
       </div>
       {item("conversations", "chat", "Conversations")}
+      {item("computer", "computer", "Computer")}
       <div className={styles.spacer} />
       {item("settings", "settings", "Settings")}
     </nav>

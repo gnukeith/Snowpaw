@@ -1,0 +1,29 @@
+.button {
+  flex: none;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  font-weight: var(--weight-medium);
+}
+
+.button:hover {
+  background: color-mix(in oklch, var(--text) 6%, var(--surface));
+}
+
+.button:disabled {
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.primary {
+  composes: button;
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.primary:hover {
+  background: color-mix(in oklch, var(--text) 12%, var(--accent));
+}
