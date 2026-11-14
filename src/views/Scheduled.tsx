@@ -14,7 +14,7 @@ export function Scheduled({ agent, tasks }: { agent: Agent; tasks: Task[] }) {
     );
   }
   return (
-    <ul className={styles.tasks}>
+    <ul className={styles.tasks} tabIndex={0} aria-label="Scheduled">
       {[...tasks]
         .sort((a, b) => a.at - b.at)
         .map((task) => (

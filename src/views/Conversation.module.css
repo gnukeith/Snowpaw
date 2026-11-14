@@ -143,6 +143,17 @@
   margin-top: var(--space-2);
 }
 
+/* Read out, never seen. */
+.unseen {
+  position: absolute;
+  width: var(--hairline);
+  height: var(--hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  user-select: none;
+}
+
 /* Messages are the one part of the app that is text to read and copy. */
 .theirs {
   max-width: min(var(--prose-width), var(--bubble-width));

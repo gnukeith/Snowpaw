@@ -19,7 +19,7 @@ export function Changes({ agent, diff }: { agent: Agent; diff: string }) {
     );
   }
   return (
-    <div className={styles.changes}>
+    <div className={styles.changes} tabIndex={0} role="group" aria-label="Changes">
       {truncated && (
         <p className={styles.notice}>
           These changes are too large to show in full.
@@ -36,7 +36,7 @@ export function Changes({ agent, diff }: { agent: Agent; diff: string }) {
           {file.hunks.length === 0 ? (
             <p className={styles.note}>No text changes to show.</p>
           ) : (
-            <div className={styles.lines}>
+            <div className={styles.lines} tabIndex={0} role="group" aria-label={`Changes to ${file.path}`}>
               {file.hunks.map((hunk, at) => (
                 <div key={at} className={styles.hunk}>
                   <div className={styles.header}>{hunk.header}</div>

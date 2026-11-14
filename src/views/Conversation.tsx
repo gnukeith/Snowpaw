@@ -112,7 +112,8 @@ export function Conversation(props: Props) {
         </div>
       </header>
 
-      <div className={styles.messages}>
+      {/* It can take focus so that the keyboard can scroll it: no scrollbar is drawn. */}
+      <div className={styles.messages} tabIndex={0} role="group" aria-label="Messages">
         {messages.length === 0 && (
           <p className={styles.empty}>Nothing here yet. Say what you want {agent.name} to do.</p>
         )}
@@ -151,6 +152,9 @@ export function Conversation(props: Props) {
                     ))}
                 </span>
                 <p className={mine ? styles.mine : between ? styles.between : styles.theirs}>
+                  {/* Who wrote it, for those who cannot see which side it is
+                      on. Between agents, the line above already says. */}
+                  {!between && <span className={styles.unseen}>{mine ? "You" : agent.name}: </span>}
                   {message.text}
                 </p>
               </div>

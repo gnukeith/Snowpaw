@@ -17,7 +17,7 @@ export function Activity({ agent, steps }: { agent: Agent; steps: Step[] }) {
     );
   }
   return (
-    <ol className={styles.steps}>
+    <ol className={styles.steps} tabIndex={0} aria-label="Activity">
       {steps.map((step) => (
         <li key={step.id} className={styles.step}>
           <div className={styles.label}>
@@ -29,7 +29,8 @@ export function Activity({ agent, steps }: { agent: Agent; steps: Step[] }) {
           ) : (
             <div className={styles.output}>
               {step.source && <code className={styles.source}>{step.source}</code>}
-              <pre className={styles.text}>{step.text}</pre>
+              {/* On one line: a pre keeps every space and line break inside it. */}
+              <pre className={styles.text} tabIndex={0}>{step.text}</pre>
             </div>
           )}
         </li>
