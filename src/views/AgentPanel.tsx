@@ -21,7 +21,7 @@ interface Props {
 }
 
 /* To add a tab, add its name here and its view below. */
-const tabs = ["computer", "activity", "changes", "scheduled"] as const;
+const tabs = ["changes", "activity", "computer", "scheduled"] as const;
 
 /** What an agent is doing, beside its conversation. */
 export function AgentPanel({ ref, agent, work, windowButtons, onClose }: Props) {
