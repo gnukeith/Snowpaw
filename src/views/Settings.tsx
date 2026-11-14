@@ -4,9 +4,12 @@ import { Button } from "../components/Button";
 import { Dialog } from "../components/Dialog";
 import { Input } from "../components/Input";
 import { PictureField } from "../components/PictureField";
+import { Row } from "../components/Row";
 import { Segmented } from "../components/Segmented";
 import { cleanName, initials, maxNameLength } from "../data/agents";
+import type { Connection } from "../data/connections";
 import { modes, type Theme } from "../theme/theme";
+import { Models, Search } from "./Connections";
 import styles from "./Settings.module.css";
 
 interface Props {
@@ -20,6 +23,8 @@ interface Props {
   onPictureChange: (picture: string | undefined) => void;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
+  connections: Connection[];
+  onConnectionsChange: (connections: Connection[]) => void;
   /** Present in development builds only. */
   developer?: { load: () => void; remove: () => void };
   onClose: () => void;
@@ -35,6 +40,12 @@ interface Category {
 const categories: Category[] = [
   { id: "general", label: "General", Panel: General },
   { id: "appearance", label: "Appearance", Panel: Appearance },
+  {
+    id: "models",
+    label: "Models",
+    Panel: ({ connections, onConnectionsChange }) => <Models connections={connections} onChange={onConnectionsChange} />,
+  },
+  { id: "search", label: "Search", Panel: Search },
 ];
 if (import.meta.env.DEV) categories.push({ id: "developer", label: "Developer", Panel: Developer });
 
@@ -122,17 +133,5 @@ function Developer({ developer }: Props) {
         <Button onClick={developer?.remove}>Remove</Button>
       </div>
     </Row>
-  );
-}
-
-function Row({ label, hint, children }: { label: string; hint: string; children: ReactNode }) {
-  return (
-    <div className={styles.row}>
-      <div>
-        <h3 className={styles.label}>{label}</h3>
-        <p className={styles.hint}>{hint}</p>
-      </div>
-      {children}
-    </div>
   );
 }

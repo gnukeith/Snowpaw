@@ -9,6 +9,7 @@ const icons = {
     </>
   ),
   plus: <path d="M8 3v10M3 8h10" />,
+  chevron: <path d="m4 6 4 4 4-4" />,
   close: <path d="m4 4 8 8m0-8-8 8" />,
   minimize: <path d="M4 11.5h8" />,
   maximize: <rect x="4" y="4" width="8" height="8" rx="1.5" />,

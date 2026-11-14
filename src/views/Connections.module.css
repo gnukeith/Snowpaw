@@ -1,0 +1,44 @@
+/* What the page is for, above its rows. */
+.lead {
+  max-width: var(--prose-width);
+  padding-bottom: var(--space-4);
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+  border-top: var(--hairline) solid var(--border);
+}
+
+/* A text box in a row: as wide as the other controls, not as wide as the row. */
+.field {
+  display: flex;
+  flex: none;
+  width: var(--setting-width);
+}
+
+.status {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  user-select: text;
+}
+
+.status[data-state="connected"] {
+  color: var(--success);
+}
+
+.status[data-state="failed"] {
+  color: var(--danger);
+}
+
+.note {
+  max-width: var(--prose-width);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

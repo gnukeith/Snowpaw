@@ -1,0 +1,36 @@
+/* The box is drawn here and the arrow laid over its end, so a list looks like
+   every other control instead of like the desktop's own. */
+.wrap {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.wrap > svg {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: var(--space-2);
+  margin-block: auto;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.select {
+  flex: 1;
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  padding-inline-end: var(--space-8);
+  appearance: none;
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+}
+
+.select:disabled {
+  color: var(--text-muted);
+}

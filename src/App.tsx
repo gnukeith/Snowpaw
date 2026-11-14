@@ -22,6 +22,7 @@ import {
   type Message,
   type TaskDraft,
 } from "./data/conversation";
+import { loadConnections, saveConnections } from "./data/connections";
 import { parseButtonLayout, type ButtonLayout } from "./data/frame";
 import {
   loadName,
@@ -53,6 +54,7 @@ export function App() {
   // The agent being edited, "new" for one being made, or null.
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [connections, setConnections] = useState(loadConnections);
   // The proposed task being changed before it is agreed to, and whose it is.
   const [proposing, setProposing] = useState<{ agentId: string; message: Message }>();
   const [panelOpen, setPanelOpen] = useState(false);
@@ -75,11 +77,11 @@ export function App() {
   }, [theme]);
 
   useEffect(() => {
-    // Both are written every time, so that one failing is not hidden by the
-    // other succeeding.
-    const saved = [saveAgents(agents), savePicture(picture)];
+    // All are written every time, so that one failing is not hidden by
+    // another succeeding.
+    const saved = [saveAgents(agents), savePicture(picture), saveConnections(connections)];
     setUnsaved(saved.includes(false));
-  }, [agents, picture]);
+  }, [agents, picture, connections]);
 
   useEffect(() => saveName(name), [name]);
 
@@ -262,6 +264,8 @@ export function App() {
             onPictureChange={setPicture}
             theme={theme}
             onThemeChange={setTheme}
+            connections={connections}
+            onConnectionsChange={setConnections}
             developer={developer}
             onClose={() => setSettingsOpen(false)}
           />

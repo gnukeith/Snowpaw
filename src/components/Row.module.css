@@ -1,0 +1,26 @@
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  padding: var(--space-4) 0;
+  border-top: var(--hairline) solid var(--border);
+}
+
+/* Gives way to the control: its words wrap before the control is pushed to
+   a line of its own. */
+.text {
+  flex: 1;
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
