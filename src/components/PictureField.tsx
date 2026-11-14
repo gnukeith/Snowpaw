@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { toPicture } from "../data/picture";
 import { Button } from "./Button";
 import styles from "./PictureField.module.css";
@@ -21,6 +21,15 @@ export function PictureField({ children, hasPicture, onChange, onWorking }: Prop
   // Goes up with every change to the picture. A file takes a moment to turn
   // into a picture, and one that finishes after a later change is dropped.
   const change = useRef(0);
+
+  // A file still being read when the field goes away is dropped too: by the
+  // time it is done, the picture may have been changed from somewhere else.
+  useEffect(
+    () => () => {
+      change.current += 1;
+    },
+    [],
+  );
 
   async function choose(event: ChangeEvent<HTMLInputElement>) {
     const chosen = event.target.files?.[0];
