@@ -1,0 +1,69 @@
+/* Lies over the surface that is clicked and takes nothing from it: clicks go
+   through, and a ripple at the edge is cut off there. */
+.layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Centred on the point that was clicked. */
+.ripple {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  display: grid;
+  place-items: center;
+  width: var(--ripple-size);
+  height: var(--ripple-size);
+  translate: -50% -50%;
+  color: var(--accent);
+}
+
+/* The ring that spreads from the point. */
+.ripple::before {
+  position: absolute;
+  inset: 0;
+  border: calc(var(--hairline) * 2) solid currentColor;
+  border-radius: var(--radius-round);
+  animation: spread var(--ripple-time) ease-out both;
+  content: "";
+}
+
+/* The paw or heart, which grows as it drifts up and away. */
+.shape {
+  width: 40%;
+  height: 40%;
+  fill: currentColor;
+  rotate: var(--tilt);
+  animation: drift var(--ripple-time) ease-out both;
+}
+
+@keyframes spread {
+  from {
+    scale: 0.2;
+    opacity: 0.6;
+  }
+
+  to {
+    scale: 1;
+    opacity: 0;
+  }
+}
+
+@keyframes drift {
+  from {
+    scale: 0.4;
+    opacity: 0;
+  }
+
+  25% {
+    opacity: 1;
+  }
+
+  to {
+    scale: 1.1;
+    translate: 0 -60%;
+    opacity: 0;
+  }
+}

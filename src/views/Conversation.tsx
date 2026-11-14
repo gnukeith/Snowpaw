@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Avatar } from "../components/Avatar";
 import { IconButton } from "../components/IconButton";
+import { useRipples } from "../components/Ripples";
 import { Markdown } from "../components/Markdown";
 import { useFollow } from "../components/useFollow";
 import { initials, maxPinned, type Agent } from "../data/agents";
@@ -54,6 +55,7 @@ export function Conversation(props: Props) {
   const [draft, setDraft] = useState("");
   // The view stays at the newest message while a reply is written.
   const view = useFollow<HTMLDivElement>(messages);
+  const ripples = useRipples();
   // One reply at a time: the next message waits for this one to end.
   const replying = messages.some((message) => message.pending);
   const opener = useRef<HTMLButtonElement>(null);
@@ -128,6 +130,7 @@ export function Conversation(props: Props) {
         role="group"
         aria-label="Messages"
         onScroll={view.onScroll}
+        onClick={ripples.onClick}
       >
         {messages.length === 0 && (
           <p className={styles.empty}>Nothing here yet. Say what you want {agent.name} to do.</p>
@@ -228,6 +231,7 @@ export function Conversation(props: Props) {
           <IconButton primary type="submit" icon="send" label="Send" disabled={!draft.trim()} />
         )}
       </form>
+      {ripples.layer}
     </div>
   );
 }
