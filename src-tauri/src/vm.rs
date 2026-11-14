@@ -1,26 +1,35 @@
-//! The agent's computer: one QEMU virtual machine, run as a child of the app.
+//! The agent's computer: one QEMU virtual machine, run in a sandbox as a
+//! child of the app.
 //!
 //! What this does and does not protect against. The guest has no network
-//! card, no shared folder, no clipboard and no USB, its only disc is
-//! read-only, and QEMU runs under its own seccomp filter. But QEMU runs as
-//! the desktop user: a bug that lets the guest escape QEMU reaches that
-//! user's files. Treat this as a prototype boundary, not as containment for
-//! hostile code.
+//! card, no shared folder, no clipboard and no USB, and its only disc is
+//! read-only. QEMU itself runs inside bubblewrap, so a bug that lets the
+//! guest escape QEMU lands in a place with no home directory, no desktop
+//! session, no network and none of the app's open files. It can still read
+//! the system's programs under /usr, write to its session directory, use
+//! /dev/kvm and call the kernel. Nothing limits its memory or processor
+//! use yet. QEMU's own seccomp filter stays on as a second layer.
 
 use crate::qmp::Qmp;
 use serde_json::json;
-use std::fs::{self, DirBuilder, OpenOptions};
-use std::io::{self, Read};
+use std::fs::{self, DirBuilder, File, OpenOptions};
+use std::io::{self, BufRead, BufReader, PipeReader, Read};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-/// A fixed absolute path, so a changed PATH cannot swap in another program.
+/// Fixed absolute paths, so a changed PATH cannot swap in another program.
+const BWRAP: &str = "/usr/bin/bwrap";
 const QEMU: &str = "/usr/bin/qemu-system-x86_64";
+/// Where the session directory and the boot disc appear inside the sandbox.
+const SANDBOX_DIR: &str = "/session";
+const SANDBOX_DISC: &str = "/disc";
 const CONTROL_SOCKET: &str = "qmp.sock";
 /// The machine, with every built-in device it can do without switched off:
 /// each emulated device is code the guest can attack.
@@ -31,6 +40,10 @@ const PROCESSORS: &str = "4";
 /// The kernel's limit on a unix socket path, including its closing zero byte.
 const MAX_SOCKET_PATH: usize = 108;
 
+/// How long bubblewrap gets to report that it has created the sandbox.
+const SANDBOX_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long the kernel gets to finish off a sandbox that has been killed.
+const TEARDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long QEMU gets to open its control socket after starting.
 const START_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long the control handshake, and then any one control command, may take.
@@ -60,19 +73,32 @@ struct Screen {
     last_frame: Option<Instant>,
 }
 
-/// The QEMU child and its private directory. Dropping it always cleans up both.
+/// The sandbox with QEMU in it, and its private directory. Dropping it
+/// always cleans up both.
 struct Process {
+    /// bubblewrap, which exits when QEMU does.
     child: Mutex<Child>,
+    /// The first process inside the sandbox. The kernel does not let it
+    /// finish dying until every other process in the sandbox is gone, so its
+    /// end is the proof that nothing is left running.
+    first: OwnedFd,
     dir: PathBuf,
 }
 
 impl Process {
-    /// Kills QEMU and waits for it to be gone. Safe to call more than once.
-    fn kill(&self) {
+    /// Kills everything in the sandbox and waits for it to be gone. Safe to
+    /// call more than once. False if the sandbox outlived the wait.
+    fn kill(&self) -> bool {
         let mut child = lock(&self.child);
         // Kill, do not ask: this has to work when QEMU has stopped answering.
         let _ = child.kill();
         let _ = child.wait();
+        // bubblewrap's death takes the sandbox with it only once the sandbox
+        // is fully set up, so its first process is killed directly as well.
+        let no_details = std::ptr::null::<libc::siginfo_t>();
+        // Safety: a system call on a descriptor this struct owns.
+        unsafe { libc::syscall(libc::SYS_pidfd_send_signal, self.first.as_raw_fd(), libc::SIGKILL, no_details, 0) };
+        readable(&self.first, TEARDOWN_TIMEOUT)
     }
 
     fn has_exited(&self) -> bool {
@@ -82,55 +108,31 @@ impl Process {
 
 impl Drop for Process {
     fn drop(&mut self) {
-        self.kill();
-        let _ = fs::remove_dir_all(&self.dir);
+        if self.kill() {
+            let _ = fs::remove_dir_all(&self.dir);
+        } else {
+            // Left in place: something may still be writing to it.
+            eprintln!("vm: the sandbox did not end, leaving {}", self.dir.display());
+        }
     }
 }
 
 impl Vm {
-    /// Starts QEMU. Returns as soon as the process exists.
+    /// Starts QEMU in its sandbox. Returns as soon as the sandbox exists.
     ///
-    /// `disc` is an image for the guest to boot from, given as an absolute
-    /// path. The guest cannot write to it. Without one the machine is empty.
+    /// `disc` is an image for the guest to boot from. The guest cannot write
+    /// to it. Without one the machine is empty.
     ///
-    /// Call this from a thread that lives as long as the app: QEMU is told to
-    /// exit when its parent dies, and Linux ties that to the spawning thread.
-    pub fn spawn(disc: Option<&Path>) -> io::Result<Spawned> {
-        let mut qemu = Command::new(QEMU);
-        if let Some(disc) = disc {
-            // QEMU runs inside the session directory, so a relative path would
-            // name a file there.
-            let path = disc.to_str().filter(|_| disc.is_absolute());
-            let path = path.ok_or_else(|| io::Error::other("the disc needs an absolute, printable path"))?;
-            // Written as JSON, so nothing in the path can be read as an option.
-            let file = json!({ "driver": "file", "filename": path, "read-only": true, "node-name": "disc" });
-            qemu.args(["-blockdev", &file.to_string()])
-                .args(["-device", "virtio-blk-pci,drive=disc,bootindex=0"]);
-        }
+    /// Call this from a thread that lives as long as the app: the sandbox is
+    /// told to die with its parent, and Linux ties that to the spawning thread.
+    pub fn spawn(disc: Option<&File>) -> io::Result<Spawned> {
         let dir = session_dir()?;
-        let child = qemu
-            .args(["-accel", "kvm", "-machine", MACHINE, "-cpu", "host", "-m", MEMORY_MB, "-smp", PROCESSORS])
-            // Nothing is added by default: no network card, no audio, no USB.
-            .args(["-nodefaults", "-no-user-config", "-nic", "none"])
-            // The screen is read through the control socket, never shown or served by QEMU.
-            .args(["-display", "none", "-vga", "virtio"])
-            // A relative path: QEMU runs inside the session directory.
-            .args(["-qmp", &format!("unix:{CONTROL_SOCKET},server=on,wait=off")])
-            .args(["-sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny"])
-            .args(["-run-with", "exit-with-parent=on"])
-            .current_dir(&dir)
-            .env_clear()
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
-        match child {
-            Ok(child) => Ok(Spawned(Process { child: Mutex::new(child), dir })),
-            Err(error) => {
-                let _ = fs::remove_dir_all(&dir);
-                Err(error)
-            }
+        let started = sandbox(&dir, disc);
+        if started.is_err() {
+            let _ = fs::remove_dir_all(&dir);
         }
+        let (child, first) = started?;
+        Ok(Spawned(Process { child: Mutex::new(child), first, dir }))
     }
 
     /// Ends the machine at once, without asking the guest or QEMU.
@@ -173,6 +175,127 @@ impl Spawned {
         let stream = control_socket(&self.0)?;
         let qmp = Qmp::connect(stream, CONTROL_TIMEOUT)?;
         Ok(Vm { process: self.0, screen: Mutex::new(Screen { qmp, frames: 0, last_frame: None }) })
+    }
+}
+
+/// Starts bubblewrap with QEMU as its payload. Returns bubblewrap and a
+/// handle to the first process of the sandbox it created.
+fn sandbox(dir: &Path, disc: Option<&File>) -> io::Result<(Child, OwnedFd)> {
+    let (report, report_end) = io::pipe()?;
+    let report_fd = report_end.as_raw_fd();
+    let disc_fd = disc.map(AsRawFd::as_raw_fd);
+
+    let mut command = Command::new(BWRAP);
+    command
+        // Its own users, processes, network (none), shared memory and host name.
+        .args(["--unshare-user", "--unshare-pid", "--unshare-net", "--unshare-ipc", "--unshare-uts"])
+        .args(["--hostname", "computer", "--disable-userns", "--cap-drop", "ALL", "--new-session"])
+        // Killing bubblewrap, or the app dying, ends everything inside.
+        .arg("--die-with-parent")
+        // All it can see: the system's programs, a few device nodes, and its
+        // session directory. No /home, no /run, no /proc, no /tmp.
+        .args(["--ro-bind", "/usr", "/usr", "--symlink", "usr/lib64", "/lib64"])
+        .args(["--dev", "/dev", "--dev-bind", "/dev/kvm", "/dev/kvm"])
+        .arg("--bind")
+        .arg(dir)
+        .args([SANDBOX_DIR, "--chdir", SANDBOX_DIR])
+        .args(["--json-status-fd", &report_fd.to_string()]);
+    if let Some(fd) = disc_fd {
+        // Bound by descriptor, so the guest gets the file that was opened
+        // and checked, whatever happens to its path afterwards.
+        command.args(["--ro-bind-fd", &fd.to_string(), SANDBOX_DISC]);
+        let file = json!({ "driver": "file", "filename": SANDBOX_DISC, "read-only": true, "node-name": "disc" });
+        command.args(["--", QEMU, "-blockdev", &file.to_string()]);
+        command.args(["-device", "virtio-blk-pci,drive=disc,bootindex=0"]);
+    } else {
+        command.args(["--", QEMU]);
+    }
+    command
+        .args(["-accel", "kvm", "-machine", MACHINE, "-cpu", "host", "-m", MEMORY_MB, "-smp", PROCESSORS])
+        // Nothing is added by default: no network card, no audio, no USB.
+        .args(["-nodefaults", "-no-user-config", "-nic", "none"])
+        // The screen is read through the control socket, never shown or served by QEMU.
+        .args(["-display", "none", "-vga", "virtio"])
+        // A relative path: QEMU runs inside the session directory.
+        .args(["-qmp", &format!("unix:{CONTROL_SOCKET},server=on,wait=off")])
+        .args(["-sandbox", "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny"])
+        .args(["-run-with", "exit-with-parent=on"])
+        .env_clear()
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    // Safety: the closure runs between fork and exec and makes only raw
+    // system calls, which is all that is allowed there.
+    unsafe {
+        command.pre_exec(move || {
+            // Leave behind every descriptor the app has open, whoever opened
+            // it, except the two bubblewrap is meant to receive.
+            let all_from_3 = libc::close_range(3, libc::c_uint::MAX, libc::CLOSE_RANGE_CLOEXEC as libc::c_int);
+            let passed_on = [Some(report_fd), disc_fd].into_iter().flatten();
+            if all_from_3 == 0 && passed_on.fold(true, |ok, fd| ok && libc::fcntl(fd, libc::F_SETFD, 0) == 0) {
+                Ok(())
+            } else {
+                Err(io::Error::last_os_error())
+            }
+        });
+    }
+    let mut child = command.spawn()?;
+    // Closed on this side, so the pipe ends if bubblewrap dies without reporting.
+    drop(report_end);
+    match first_process(report, child.id()) {
+        Ok(first) => Ok((child, first)),
+        Err(error) => {
+            // bubblewrap named no sandbox of its own, so it is all there is to end.
+            let _ = child.kill();
+            let _ = child.wait();
+            Err(error)
+        }
+    }
+}
+
+/// Reads which process bubblewrap made the first one in the sandbox, and
+/// takes a handle to it that stays valid whatever happens to its number.
+fn first_process(report: PipeReader, bubblewrap: u32) -> io::Result<OwnedFd> {
+    if !readable(&report, SANDBOX_TIMEOUT) {
+        return Err(io::ErrorKind::TimedOut.into());
+    }
+    let mut line = String::new();
+    BufReader::new(report).take(256).read_line(&mut line)?;
+    let pid = serde_json::from_str::<serde_json::Value>(&line).ok().and_then(|report| report["child-pid"].as_u64());
+    let pid = pid.ok_or_else(|| io::Error::other("bubblewrap did not create the sandbox"))?;
+    // Safety: a system call that returns a new descriptor or -1.
+    let handle = unsafe { libc::syscall(libc::SYS_pidfd_open, pid as libc::pid_t, 0) };
+    if handle < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // Safety: the descriptor was just created and nothing else owns it.
+    let first = unsafe { OwnedFd::from_raw_fd(handle as libc::c_int) };
+
+    // A number can pass to another process once its owner is gone. The handle
+    // will be used to kill, so make sure it is on bubblewrap's own child, the
+    // first process of a sandbox, before anything can use it.
+    let status = fs::read_to_string(format!("/proc/{pid}/status"))?;
+    let field = |name: &str| status.lines().find_map(|line| line.strip_prefix(name)).map(str::trim);
+    let is_child = field("PPid:") == Some(bubblewrap.to_string().as_str());
+    let is_first = field("NSpid:").is_some_and(|ids| ids.split_whitespace().last() == Some("1"));
+    if is_child && is_first { Ok(first) } else { Err(io::Error::other("the sandbox could not be identified")) }
+}
+
+/// Waits until `fd` has something to read or has reached its end. For a
+/// process handle that means the process has ended.
+fn readable(fd: &impl AsRawFd, timeout: Duration) -> bool {
+    let mut wait = libc::pollfd { fd: fd.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+    let deadline = Instant::now() + timeout;
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now()).as_millis() as libc::c_int;
+        // Safety: `wait` is one valid pollfd for the length of the call.
+        match unsafe { libc::poll(&mut wait, 1, left) } {
+            1 => return true,
+            0 => return false,
+            // Interrupted by a signal: wait for what is left of the time.
+            _ if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted => {}
+            _ => return false,
+        }
     }
 }
 
@@ -323,9 +446,9 @@ fn png_size(bytes: &[u8]) -> io::Result<(u32, u32)> {
 /// Whether tests that need the real QEMU can run on this machine.
 #[cfg(test)]
 pub fn can_run_here() -> bool {
-    let found = Path::new("/dev/kvm").exists() && Path::new(QEMU).exists();
+    let found = ["/dev/kvm", QEMU, BWRAP].iter().all(|path| Path::new(path).exists());
     if !found {
-        eprintln!("skipped: needs KVM and QEMU");
+        eprintln!("skipped: needs KVM, QEMU and bubblewrap");
     }
     found
 }
@@ -361,6 +484,15 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    /// The host's numbers for the processes inside a machine's sandbox,
+    /// starting with its first process. QEMU is the second.
+    fn sandbox_pids(process: &Process) -> Vec<u32> {
+        let handle = fs::read_to_string(format!("/proc/self/fdinfo/{}", process.first.as_raw_fd())).unwrap();
+        let first = handle.lines().find_map(|line| line.strip_prefix("Pid:")).unwrap().trim().to_owned();
+        let children = fs::read_to_string(format!("/proc/{first}/task/{first}/children")).unwrap();
+        std::iter::once(first.as_str()).chain(children.split_whitespace()).map(|pid| pid.parse().unwrap()).collect()
     }
 
     #[test]
@@ -495,33 +627,66 @@ mod tests {
         let left: Vec<_> = fs::read_dir(&dir).unwrap().map(|entry| entry.unwrap().file_name()).collect();
         assert_eq!(left, [CONTROL_SOCKET]);
 
-        let pid = lock(&vm.process.child).id();
+        let pids = sandbox_pids(&vm.process);
+        assert_eq!(pids.len(), 2, "the sandbox holds its first process and QEMU");
         drop(vm);
         assert!(!dir.exists(), "the session directory is removed");
-        assert!(!Path::new(&format!("/proc/{pid}")).exists(), "QEMU is gone");
+        for pid in pids {
+            // The first process may still be listed until its new parent
+            // collects it, but only as a dead one ("Z").
+            let state = fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+            assert!(state.is_empty() || state.contains(") Z "), "nothing in the sandbox is left running: {state}");
+        }
     }
 
-    /// Runs the real QEMU. The disc is attached read-only, whatever its path contains.
+    /// Runs the real QEMU.
     #[test]
     fn attaches_a_read_only_disc() {
         if !can_run_here() {
             return;
         }
         let scratch = Scratch::new("disc");
-        let disc = scratch.0.join("a,b \"c\".iso");
+        let disc = scratch.0.join("disc.iso");
         fs::File::create(&disc).unwrap().set_len(1024 * 1024).unwrap();
 
-        let vm = Vm::spawn(Some(&disc)).unwrap().connect().unwrap();
+        let vm = Vm::spawn(Some(&File::open(&disc).unwrap())).unwrap().connect().unwrap();
         // What the guest's devices hold: one drive with this file in it.
         let devices = lock(&vm.screen).qmp.execute("query-block", json!({})).unwrap();
         let [drive] = devices.as_array().unwrap().as_slice() else { panic!("{devices}") };
         assert!(drive["qdev"].as_str().is_some_and(|device| !device.is_empty()), "{drive}");
-        assert_eq!(drive["inserted"]["image"]["filename"], disc.to_str().unwrap());
+        assert_eq!(drive["inserted"]["image"]["filename"], SANDBOX_DISC);
+        assert_eq!(drive["inserted"]["image"]["virtual-size"], 1024 * 1024);
         assert_eq!(drive["inserted"]["ro"], true);
+    }
 
-        assert!(Vm::spawn(Some(Path::new("relative.iso"))).is_err(), "a relative path is refused");
-        let missing = Vm::spawn(Some(&scratch.0.join("missing.iso"))).unwrap();
-        assert!(missing.connect().is_err(), "QEMU does not start without its disc");
+    /// Runs the real QEMU, and asks it over the control socket to do what a
+    /// guest that had taken it over might try.
+    #[test]
+    fn the_sandbox_hides_the_host() {
+        if !can_run_here() {
+            return;
+        }
+        let scratch = Scratch::new("host");
+        let secret = scratch.0.join("secret");
+        fs::write(&secret, b"must stay out").unwrap();
+        // Open for the app, and not marked to close when another program starts.
+        let open = File::open(&secret).unwrap();
+        assert_eq!(unsafe { libc::fcntl(open.as_raw_fd(), libc::F_SETFD, 0) }, 0);
+
+        let vm = Vm::spawn(None).unwrap().connect().unwrap();
+        let qemu = sandbox_pids(&vm.process)[1];
+        let held: Vec<_> = fs::read_dir(format!("/proc/{qemu}/fd")).unwrap().map(|fd| fs::read_link(fd.unwrap().path()).unwrap()).collect();
+        assert!(held.len() > 3, "QEMU's own descriptors are listed: {held:?}");
+        assert!(!held.contains(&secret), "the app's open file did not reach QEMU");
+
+        let mut screen = lock(&vm.screen);
+        let mut dump = |path: &Path| screen.qmp.execute("screendump", json!({ "filename": path, "format": "png" }));
+        let outside = scratch.0.join("outside.png");
+        assert!(dump(&outside).is_err(), "the host's /tmp does not exist in the sandbox");
+        assert!(dump(&std::env::home_dir().unwrap().join("outside.png")).is_err(), "nor does /home");
+        assert!(dump(Path::new("/usr/outside.png")).is_err(), "/usr is read-only");
+        assert!(dump(Path::new("../outside.png")).is_ok(), "the sandbox's own root is writable and thrown away");
+        assert!(!outside.exists() && !vm.process.dir.with_file_name("outside.png").exists());
     }
 
     /// Runs the real QEMU. A controller added by accident (USB, SATA, a

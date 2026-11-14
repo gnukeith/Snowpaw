@@ -6,7 +6,7 @@ Tauri harness for your agents to thrive in, not to limit.
 Needs Node with pnpm, Rust, and the Tauri system packages. On Fedora:
 
 ```sh
-sudo dnf install rust cargo gcc webkit2gtk4.1-devel openssl-devel librsvg2-devel libappindicator-gtk3-devel libxdo-devel qemu-system-x86-core
+sudo dnf install rust cargo gcc webkit2gtk4.1-devel openssl-devel librsvg2-devel libappindicator-gtk3-devel libxdo-devel qemu-system-x86-core bubblewrap
 ```
 
 Then:

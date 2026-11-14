@@ -4,8 +4,8 @@
 mod qmp;
 mod vm;
 
+use std::fs::File;
 use std::io;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, mpsc};
 use std::time::Duration;
 use tauri::ipc::Response;
@@ -108,8 +108,9 @@ fn vm_start(app: AppHandle, computer: State<Computer>) -> Result<(), &'static st
     let Some(ticket) = computer.begin_start()? else {
         return Ok(());
     };
-    let disc = app.path().app_data_dir().map(|dir| dir.join(BOOT_DISC));
-    let disc = disc.ok().filter(|disc| disc.is_file());
+    // Opened once, here: the machine gets this file even if its path changes.
+    let disc = app.path().app_data_dir().ok().and_then(|dir| File::open(dir.join(BOOT_DISC)).ok());
+    let disc = disc.filter(|disc| disc.metadata().is_ok_and(|found| found.is_file()));
     let disc = disc.ok_or("The Fedora image is missing. The README explains how to get it.")?;
     let vm = start(&app, disc).map_err(|error| {
         eprintln!("vm_start: {error}");
@@ -118,8 +119,8 @@ fn vm_start(app: AppHandle, computer: State<Computer>) -> Result<(), &'static st
     computer.finish_start(ticket, vm)
 }
 
-fn start(app: &AppHandle, disc: PathBuf) -> io::Result<Vm> {
-    // QEMU has to be spawned from the main thread (see `Vm::spawn`). Waiting
+fn start(app: &AppHandle, disc: File) -> io::Result<Vm> {
+    // The machine has to be spawned from the main thread (see `Vm::spawn`). Waiting
     // for it to come up happens here, so the window stays responsive.
     let (send, receive) = mpsc::channel();
     app.run_on_main_thread(move || {
