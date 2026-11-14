@@ -48,8 +48,9 @@
 .row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: var(--space-6);
+  gap: var(--space-3) var(--space-6);
   padding: var(--space-4) 0;
   border-top: var(--hairline) solid var(--border);
 }
