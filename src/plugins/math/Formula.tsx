@@ -30,7 +30,7 @@ export default function Formula({ source, inline }: BlockProps) {
     if (!place.current) return;
     try {
       if (source.length > longestFormula) throw new Error("This formula is too long to draw.");
-      if (definesCommands.test(source)) throw new Error("This formula defines commands of its own, which are not drawn.");
+      if (definesCommands.test(source)) throw new Error("This formula defines its own commands or uses KaTeX's internal ones, which are not drawn.");
       if (budget && !budget.mayWork()) throw new Error("This message has more mathematics in it than it can show.");
       // Built away from the page and checked before any of it is shown.
       // KaTeX makes the elements itself, so no HTML text is ever parsed.
