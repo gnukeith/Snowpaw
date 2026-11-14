@@ -28,6 +28,8 @@ export function Computer() {
   const action = useRef<HTMLButtonElement>(null);
   // Set when Start or Stop was pressed, so focus can follow to the button that replaces it.
   const refocus = useRef(false);
+  // Goes up the moment a start or stop begins.
+  const commands = useRef(0);
 
   // The machine can change without this view doing anything: a start asked
   // for before the view was opened, a machine that ends by itself. So no
@@ -36,12 +38,15 @@ export function Computer() {
   useEffect(() => {
     if (busy) return;
     let live = true;
+    const begun = commands.current;
     (async () => {
       while (live) {
         const now = await ask();
-        // An answer asked for before a start or stop began, or before the
-        // view was left, is out of date by the time it arrives.
-        if (!live) return;
+        // An answer asked for before the view was left, or before a start or
+        // stop began, is out of date by the time it arrives. The count is
+        // what catches an answer that arrives after a start or stop has
+        // begun but before the screen has caught up with it.
+        if (!live || begun !== commands.current) return;
         setPower(now);
         await new Promise((resolve) => setTimeout(resolve, statusInterval));
       }
@@ -100,6 +105,7 @@ export function Computer() {
   }, [power]);
 
   async function turn(on: boolean) {
+    commands.current++;
     setBusy(true);
     setError(null);
     if (on) setPower("starting");
