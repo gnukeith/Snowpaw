@@ -50,6 +50,8 @@
   --output-height: calc(var(--unit) * 60);
   --content-width: calc(var(--unit) * 160);
   --prose-width: calc(var(--unit) * 100);
+  /* How much of a conversation's width one message may take. */
+  --bubble-width: 85%;
 
   /* Type. */
   --font: system-ui, sans-serif;
