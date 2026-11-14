@@ -20,7 +20,7 @@
 .canvas {
   display: block;
   width: 100%;
-  aspect-ratio: 8 / 5;
+  height: auto;
   overflow: hidden;
 }
 
@@ -78,11 +78,16 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* A short thick stroke in the series' colour: thin enough to read as a line,
+   thick enough for its colour to show. */
 .swatch {
   display: inline-block;
   flex-shrink: 0;
+  align-self: center;
   width: var(--space-4);
-  border-top: calc(var(--hairline) * var(--icon-stroke)) solid currentColor;
+  height: var(--space-1);
+  border-radius: var(--space-1);
+  background: currentColor;
 }
 .series1 { color: var(--series-1); }
 .series2 { color: var(--series-2); }
