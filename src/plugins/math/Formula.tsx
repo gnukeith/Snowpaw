@@ -1,5 +1,6 @@
 import katex from "katex";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { MessageBudget } from "../budget";
 import type { BlockProps } from "../types";
 import styles from "./Formula.module.css";
 import { checkSizes, largest } from "./size.ts";
@@ -12,9 +13,17 @@ const limits = { trust: false, maxExpand: 1000, maxSize: largest, throwOnError: 
 /** A formula, drawn as MathML: the browser lays it out with the desktop's
     math font. KaTeX's own layout needs inline styles, which the app's
     security policy does not let a message carry. */
+/** The most elements one formula may build. */
+const mostElements = 3000;
+
 export default function Formula({ source, inline }: BlockProps) {
   const place = useRef<HTMLSpanElement>(null);
   const [failure, setFailure] = useState<Error>();
+  const budget = useContext(MessageBudget);
+  // What this formula's claim on its message's budget is filed under.
+  const owner = useRef({}).current;
+
+  useEffect(() => () => budget?.release(owner), [budget, owner]);
 
   useLayoutEffect(() => {
     if (!place.current) return;
@@ -24,6 +33,10 @@ export default function Formula({ source, inline }: BlockProps) {
       const built = document.createElement("span");
       katex.render(source, built, { ...limits, output: "mathml", displayMode: !inline });
       checkSizes(built);
+      const elements = built.querySelectorAll("*").length;
+      if (elements > mostElements || (budget && !budget.claim(owner, elements))) {
+        throw new Error("This message has more mathematics in it than it can show.");
+      }
       place.current.replaceChildren(...built.childNodes);
       setFailure(undefined);
     } catch (error) {

@@ -2,7 +2,9 @@ import { Component, createContext, lazy, Suspense, useContext, useMemo, type Com
 import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { markFormulas, mostFormulas } from "../data/formulas";
+import type { PluggableList } from "unified";
+import { remarkFormulas } from "../data/formulaSyntax";
+import { Budget, MessageBudget } from "../plugins/budget";
 import { blockFor } from "../plugins/index";
 import type { BlockProps } from "../plugins/types";
 import styles from "./Markdown.module.css";
@@ -17,6 +19,23 @@ const loaded = new Map<() => Promise<{ default: ComponentType<BlockProps> }>, Co
     Markdown would hold up the window for too long. About fifty pages. */
 const longest = 100_000;
 
+/** More quotes or lists inside each other than this, and a message is shown
+    as plain text: the reader follows each level by calling itself, and can
+    run out of room. */
+const deepest = 64;
+
+/** How many elements the formulas of one message may build between them. */
+const mostElements = 30_000;
+
+/** Whether some line opens more quotes and list items than `deepest`. */
+function tooDeep(text: string): boolean {
+  for (const line of text.split("\n")) {
+    const opening = /^(?:[ \t]*(?:>|[*+-](?=[ \t])|\d{1,9}[.)](?=[ \t])))+/.exec(line);
+    if (opening && (opening[0].match(/>|[*+-]|\d{1,9}[.)]/g)?.length ?? 0) > deepest) return true;
+  }
+  return false;
+}
+
 /** A message's text, read as Markdown. The text may be written by an agent
     that has read anything, so nothing in it can act: raw HTML shows as text,
     a picture is never fetched, and a link shows where it goes instead of
@@ -24,7 +43,7 @@ const longest = 100_000;
     that plugin; the rest show as they were written. A message that cannot
     be read as Markdown, however it fails, is shown as plain text. */
 export function Markdown({ text }: { text: string }) {
-  if (text.length > longest) return <p className={styles.plain}>{text}</p>;
+  if (text.length > longest || tooDeep(text)) return <p className={styles.plain}>{text}</p>;
   return (
     <Unreadable key={text} text={text}>
       <Read text={text} />
@@ -35,18 +54,15 @@ export function Markdown({ text }: { text: string }) {
 function Read({ text }: { text: string }) {
   // Formulas are looked for only while something draws them. Otherwise a
   // dollar sign is a dollar sign.
-  const drawn = blockFor("math", useContext(PluginsOff)) !== undefined;
-  const { marked, formulas } = useMemo(() => {
-    if (!drawn) return { marked: text, formulas: false };
-    const found = markFormulas(text);
-    // Past the limit, every dollar sign is read as a dollar sign.
-    return { marked: found.text, formulas: found.formulas <= mostFormulas };
-  }, [drawn, text]);
+  const formulas = blockFor("math", useContext(PluginsOff)) !== undefined;
+  const budget = useMemo(() => new Budget(mostElements), []);
   return (
     <div className={styles.markdown}>
-      <ReactMarkdown remarkPlugins={formulas ? withFormulas : plain} components={components}>
-        {marked}
-      </ReactMarkdown>
+      <MessageBudget value={budget}>
+        <ReactMarkdown remarkPlugins={formulas ? withFormulas : plain} components={components}>
+          {text}
+        </ReactMarkdown>
+      </MessageBudget>
     </div>
   );
 }
@@ -65,8 +81,9 @@ class Unreadable extends Component<{ text: string; children: ReactNode }, { fail
   }
 }
 
-const plain = [remarkGfm];
-const withFormulas = [remarkGfm, remarkMath];
+const plain: PluggableList = [remarkGfm];
+// remark-math reads the double dollar forms; remarkFormulas the rest.
+const withFormulas: PluggableList = [remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFormulas];
 
 type Element = NonNullable<ExtraProps["node"]>;
 

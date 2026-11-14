@@ -9,6 +9,7 @@
 .inline {
   display: inline-block;
   max-width: 100%;
+  max-height: var(--formula-height);
   contain: paint;
 }
 
