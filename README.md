@@ -1,5 +1,71 @@
 # Snowpaw
-Tauri harness for your agents to thrive in, not to limit.
+
+A harness for your agents to thrive in, not to limit.
+
+Snowpaw is a desktop app for AI agents that work for you around the clock.
+That is what it is being built to be; [What works today](#what-works-today)
+says how far it has got.
+
+The agents are meant to work not on your system but in a virtual machine of
+their own, which Snowpaw runs on your computer inside a sandbox, where they can
+install, build and break things without asking. You watch and steer from an app
+that feels like a group chat, and you check what an agent did after the fact:
+its reasoning, the output of what it ran, the files it changed and its screen.
+
+It is for everyone, and it is shaped by what it will mostly be used for: coding,
+research, mathematics and automation.
+
+## The ideas behind it
+
+- **Security and privacy first.** The agents get freedom because their computer
+  is cut off from yours, not because you click "allow" all day.
+- **Everything is a plugin.** Themes, skills, tools and the views agents build
+  are meant to be plugins, including the ones Snowpaw ships with, and an agent
+  should be able to write a new one when you ask.
+- **Lean.** Tauri, React and a small Rust core. No dependency that a few lines
+  would replace.
+- **One look.** Every size, radius and colour comes from design tokens, so the
+  whole app can be restyled at once.
+- **Familiar.** A sidebar, settings in categories, and the things you already
+  know from the tools you use.
+
+## What works today
+
+Snowpaw is early. This is what you can see and use now:
+
+- The app shell: agents with names and pictures in a sidebar, a conversation
+  with each, and settings for your name, picture, theme and accent colour.
+- A panel beside each conversation for checking an agent's work: its activity
+  (reasoning and outputs), its file changes as a diff, and its scheduled tasks.
+  Nothing produces that work yet, so a development build fills these views
+  with sample data.
+- The agents' computer: a QEMU virtual machine inside a bubblewrap sandbox,
+  with no network, no shared folder and no clipboard, which boots Fedora
+  Workstation and shows its screen in the panel.
+
+What is not built yet: nothing answers when you write to an agent. Connecting a
+model, running agents on the computer, plugins, skills and deep research are
+the work in progress.
+
+## Thanks
+
+Snowpaw stands on other people's work, and a few projects shaped it directly.
+
+- [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) is where
+  the plugin idea comes from. It showed that a harness can be made of plugins
+  all the way down, themes and backgrounds included, and that an agent can
+  write a new one when you ask. It is open source and generous with its
+  documentation, and Snowpaw's plugin system, still being built, takes it as
+  its model. Thank you.
+- [T3 Code](https://github.com/pingdotgg/t3code) and
+  [tstack](https://github.com/t3dotgg/tstack) for showing how several models
+  can review each other's work, which is also how Snowpaw itself is built.
+- [Superpowers](https://github.com/obra/superpowers) and the
+  [Agent Skills](https://agentskills.io) format for the idea that a short,
+  well-written procedure can make a model more careful.
+- [Tauri](https://tauri.app), [QEMU](https://www.qemu.org),
+  [bubblewrap](https://github.com/containers/bubblewrap), WebKitGTK, React and
+  [Fedora](https://fedoraproject.org), which Snowpaw runs on.
 
 ## Run it
 
