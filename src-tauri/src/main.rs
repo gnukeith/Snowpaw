@@ -6,26 +6,26 @@ mod vm;
 
 use std::fs::File;
 use std::io;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, mpsc};
-use std::time::Duration;
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager, RunEvent, State};
 use vm::Vm;
 
-/// How long the main thread gets to spawn QEMU once asked.
-const SPAWN_TIMEOUT: Duration = Duration::from_secs(5);
 /// The image the computer boots from, inside the app's data directory.
 const BOOT_DISC: &str = "images/Fedora-Workstation-Live-45-1.4.x86_64.iso";
 
 /// The one virtual machine the app can run. The lock is held only for a
-/// moment, never across a capture or a start, so stopping is always possible.
+/// moment, never while waiting for a machine, so stopping is always possible.
 #[derive(Default)]
-struct Computer(Mutex<Slot>);
+struct Computer {
+    slot: Mutex<Slot>,
+    /// Signalled when a start that was under way has finished, either way.
+    settled: Condvar,
+}
 
 #[derive(Default)]
 struct Slot {
-    /// `None` while the machine is off.
-    vm: Option<Arc<Vm>>,
+    state: Place,
     /// Goes up on every stop, so a start that was under way can tell that it
     /// has been cancelled.
     stops: u64,
@@ -33,58 +33,100 @@ struct Slot {
     closed: bool,
 }
 
-impl Slot {
-    /// The machine, if there is one. It keeps its place until it is proven
-    /// gone, so that another can never be started beside it.
-    fn running(&mut self) -> Option<Arc<Vm>> {
-        if self.vm.as_ref().is_some_and(|vm| vm.has_exited()) {
-            self.vm = None;
-        }
-        self.vm.clone()
-    }
+/// There is one place for a machine. It is taken from the moment a start is
+/// let in until the machine is proven gone, so two never run side by side.
+#[derive(Default)]
+enum Place {
+    #[default]
+    Off,
+    Starting,
+    On(Arc<Vm>),
 }
 
 impl Computer {
     fn lock(&self) -> MutexGuard<'_, Slot> {
         // A panic in one command must not leave the machine impossible to stop.
-        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+        self.slot.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Decides whether a start should go ahead. `Ok(None)` means a machine is
-    /// already running; `Ok(Some(ticket))` is handed back to `finish_start`.
+    /// The running machine, if there is one. A machine that has ended by
+    /// itself gives up its place here.
+    fn running(&self) -> Option<Arc<Vm>> {
+        let mut slot = self.lock();
+        let Place::On(vm) = &slot.state else { return None };
+        let vm = Arc::clone(vm);
+        if !vm.has_exited() {
+            return Some(vm);
+        }
+        slot.state = Place::Off;
+        // The last handle on the machine is let go after the lock, not under
+        // it: that waits for bubblewrap and removes the session directory.
+        drop(slot);
+        None
+    }
+
+    /// Lets a start in if the place is free. `Ok(None)` means a machine is
+    /// already running; `Ok(Some(ticket))` must be handed to `finish_start`.
     fn begin_start(&self) -> Result<Option<u64>, &'static str> {
-        let mut slot = self.lock();
-        if slot.closed {
-            return Err("Snowpaw is closing.");
+        if self.running().is_some() {
+            return Ok(None);
         }
-        Ok(slot.running().is_none().then_some(slot.stops))
+        let mut slot = self.lock();
+        match slot.state {
+            _ if slot.closed => Err("Snowpaw is closing."),
+            Place::Starting => Err("The computer is already starting."),
+            Place::On(_) => Ok(None),
+            Place::Off => {
+                slot.state = Place::Starting;
+                Ok(Some(slot.stops))
+            }
+        }
     }
 
-    /// Publishes a machine that has come up, unless a stop or the app's exit
-    /// arrived in the meantime. A machine that is not published is dropped,
-    /// which kills it.
-    fn finish_start(&self, ticket: u64, vm: Vm) -> Result<(), &'static str> {
-        let mut slot = self.lock();
-        if slot.closed || slot.stops != ticket {
-            return Err("The computer was stopped while it was starting.");
-        }
-        // If another start got there first, keep that machine.
-        if slot.running().is_none() {
-            slot.vm = Some(Arc::new(vm));
-        }
-        Ok(())
+    /// Settles a start that `begin_start` let in: the machine takes the
+    /// place, unless the start failed or was stopped in the meantime.
+    fn finish_start(&self, ticket: u64, started: io::Result<Vm>) -> Result<(), &'static str> {
+        let stopped = {
+            let slot = self.lock();
+            slot.closed || slot.stops != ticket
+        };
+        let (state, outcome) = match started {
+            Ok(vm) if !stopped => (Place::On(Arc::new(vm)), Ok(())),
+            Ok(vm) => {
+                // A machine that cannot be proven gone keeps the place, where
+                // it can be seen and stopped again.
+                let state = if vm.kill() { Place::Off } else { Place::On(Arc::new(vm)) };
+                (state, Err("The computer was stopped while it was starting."))
+            }
+            Err(error) => {
+                eprintln!("vm_start: {error}");
+                (Place::Off, Err("The computer could not be started."))
+            }
+        };
+        self.lock().state = state;
+        self.settled.notify_all();
+        outcome
     }
 
-    /// Ends the machine and cancels any start under way. With `closing`, also
+    /// Ends the machine, and a start that is under way. With `closing`, also
     /// refuses every later start. False if the machine could not be proven
     /// gone: it then keeps its place.
     fn stop(&self, closing: bool) -> bool {
-        let vm = {
-            let mut slot = self.lock();
-            slot.stops += 1;
-            slot.closed |= closing;
-            slot.vm.clone()
+        let mut slot = self.lock();
+        slot.stops += 1;
+        slot.closed |= closing;
+        // A start under way now ends its own machine. Wait for that, so that
+        // stopped means stopped. Not when the app is closing: this is then
+        // the thread that runs the window, and a machine cannot outlive the
+        // app in any case (see the top of vm.rs).
+        while !closing && matches!(slot.state, Place::Starting) {
+            slot = self.settled.wait(slot).unwrap_or_else(PoisonError::into_inner);
+        }
+        let vm = match &slot.state {
+            Place::On(vm) => Some(Arc::clone(vm)),
+            _ => None,
         };
+        drop(slot);
         vm.is_none_or(|vm| self.end(&vm))
     }
 
@@ -94,8 +136,8 @@ impl Computer {
         // Not under the lock: this waits for the machine to be gone.
         let gone = vm.kill();
         let mut slot = self.lock();
-        if gone && slot.vm.as_ref().is_some_and(|current| Arc::ptr_eq(current, vm)) {
-            slot.vm = None;
+        if gone && matches!(&slot.state, Place::On(current) if Arc::ptr_eq(current, vm)) {
+            slot.state = Place::Off;
         }
         gone
     }
@@ -106,56 +148,42 @@ impl Computer {
 // Details of a failure go to the log, and the webview gets a fixed sentence.
 
 #[tauri::command(async)]
-fn vm_start(app: AppHandle, computer: State<Computer>) -> Result<(), &'static str> {
-    let Some(ticket) = computer.begin_start()? else {
-        return Ok(());
-    };
+fn vm_start(app: AppHandle, computer: State<'_, Computer>) -> Result<(), &'static str> {
     // Opened once, here: the machine gets this file even if its path changes.
     let disc = app.path().app_data_dir().ok().and_then(|dir| File::open(dir.join(BOOT_DISC)).ok());
     let disc = disc.filter(|disc| disc.metadata().is_ok_and(|found| found.is_file()));
     let disc = disc.ok_or("The Fedora image is missing. The README explains how to get it.")?;
-    let vm = start(&app, disc).map_err(|error| {
-        eprintln!("vm_start: {error}");
-        "The computer could not be started."
-    })?;
-    computer.finish_start(ticket, vm)
-}
-
-fn start(app: &AppHandle, disc: File) -> io::Result<Vm> {
-    // The machine has to be spawned from the main thread (see `Vm::spawn`). Waiting
-    // for it to come up happens here, so the window stays responsive.
-    let (send, receive) = mpsc::channel();
-    app.run_on_main_thread(move || {
-        // If nobody is waiting any more, the machine is dropped, which kills it.
-        let _ = send.send(Vm::spawn(Some(&disc)));
-    })
-    .map_err(io::Error::other)?;
-    receive.recv_timeout(SPAWN_TIMEOUT).map_err(io::Error::other)??.connect()
+    let Some(ticket) = computer.begin_start()? else {
+        return Ok(());
+    };
+    computer.finish_start(ticket, Vm::spawn(Some(&disc)).and_then(vm::Spawned::connect))
 }
 
 #[tauri::command(async)]
-fn vm_stop(computer: State<Computer>) -> Result<(), &'static str> {
+fn vm_stop(computer: State<'_, Computer>) -> Result<(), &'static str> {
     computer.stop(false).then_some(()).ok_or("The computer could not be stopped. Try again.")
 }
 
 /// Whether the computer is running.
 #[tauri::command(async)]
-fn vm_status(computer: State<Computer>) -> bool {
-    computer.lock().running().is_some()
+fn vm_status(computer: State<'_, Computer>) -> bool {
+    computer.running().is_some()
 }
 
 /// The guest's screen as PNG bytes.
 #[tauri::command(async)]
-fn vm_frame(computer: State<Computer>) -> Result<Response, &'static str> {
-    let running = computer.lock().running();
-    let vm = running.ok_or("The computer is no longer running.")?;
+fn vm_frame(computer: State<'_, Computer>) -> Result<Response, &'static str> {
+    let vm = computer.running().ok_or("The computer is no longer running.")?;
     vm.frame().map(Response::new).map_err(|error| {
         eprintln!("vm_frame: {error}");
         // A machine whose screen cannot be read is ended here and now. Its
         // control connection may be out of step, and the webview that would
         // otherwise ask for the stop may already have moved on.
-        computer.end(&vm);
-        "The screen could not be read, so the computer was stopped."
+        if computer.end(&vm) {
+            "The screen could not be read, so the computer was stopped."
+        } else {
+            "The screen could not be read, and the computer could not be stopped. Try Stop."
+        }
     })
 }
 
@@ -167,8 +195,6 @@ fn main() {
         .expect("failed to start Snowpaw")
         .run(|app, event| {
             if let RunEvent::Exit = event {
-                // A start that is still under way is not waited for. It
-                // cannot outlive the app: see the top of vm.rs.
                 app.state::<Computer>().stop(true);
             }
         });
@@ -178,51 +204,59 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::thread;
+    use std::time::Duration;
 
-    fn machine() -> Vm {
-        Vm::spawn(None).unwrap().connect().unwrap()
+    fn machine() -> io::Result<Vm> {
+        Vm::spawn(None)?.connect()
     }
 
     #[test]
-    fn a_start_publishes_a_machine_and_a_second_start_is_not_needed() {
+    fn a_start_takes_the_place_and_a_second_is_not_needed() {
         if !vm::can_run_here() {
             return;
         }
         let computer = Computer::default();
         let ticket = computer.begin_start().unwrap().expect("nothing is running yet");
         assert_eq!(computer.finish_start(ticket, machine()), Ok(()));
-        assert!(computer.lock().running().is_some());
+        assert!(computer.running().is_some());
         assert_eq!(computer.begin_start(), Ok(None));
+        assert!(computer.stop(false));
+        assert!(computer.running().is_none());
     }
 
     #[test]
-    fn a_stop_during_a_start_cancels_it() {
+    fn a_second_start_is_refused_while_one_is_under_way() {
+        let computer = Computer::default();
+        let ticket = computer.begin_start().unwrap().unwrap();
+        assert!(computer.begin_start().is_err());
+        assert!(computer.running().is_none(), "nothing is running yet");
+
+        // A start that fails gives the place back.
+        assert!(computer.finish_start(ticket, Err(io::Error::other("no machine"))).is_err());
+        assert!(computer.begin_start().unwrap().is_some());
+    }
+
+    #[test]
+    fn a_stop_during_a_start_waits_for_it_and_cancels_it() {
         if !vm::can_run_here() {
             return;
         }
         let computer = Computer::default();
         let ticket = computer.begin_start().unwrap().unwrap();
-        // The stop finds nothing to end, because the machine is still coming up.
-        computer.stop(false);
-        assert!(computer.finish_start(ticket, machine()).is_err());
-        assert!(computer.lock().running().is_none(), "the late machine is not published");
+        thread::scope(|scope| {
+            let stopping = scope.spawn(|| computer.stop(false));
+            thread::sleep(Duration::from_millis(100));
+            assert!(!stopping.is_finished(), "the stop waits for the start to settle");
+            assert!(computer.begin_start().is_err(), "and nothing else starts meanwhile");
+
+            assert!(computer.finish_start(ticket, machine()).is_err(), "the machine came up too late");
+            assert!(stopping.join().unwrap());
+        });
+        assert!(computer.running().is_none(), "the late machine was ended, not kept");
         // A later start is unaffected.
         let ticket = computer.begin_start().unwrap().unwrap();
         assert_eq!(computer.finish_start(ticket, machine()), Ok(()));
-    }
-
-    #[test]
-    fn two_overlapping_starts_leave_one_machine() {
-        if !vm::can_run_here() {
-            return;
-        }
-        let computer = Computer::default();
-        let first = computer.begin_start().unwrap().unwrap();
-        let second = computer.begin_start().unwrap().unwrap();
-        assert_eq!(computer.finish_start(first, machine()), Ok(()));
-        let kept = computer.lock().running().unwrap();
-        assert_eq!(computer.finish_start(second, machine()), Ok(()));
-        assert!(Arc::ptr_eq(&kept, &computer.lock().running().unwrap()));
     }
 
     #[test]
@@ -233,14 +267,18 @@ mod tests {
         let computer = Computer::default();
         let ticket = computer.begin_start().unwrap().unwrap();
         computer.finish_start(ticket, machine()).unwrap();
-        let running = computer.lock().running().unwrap();
-
-        let pending = computer.begin_start();
-        computer.stop(true);
+        let running = computer.running().unwrap();
+        assert!(computer.stop(true));
         assert!(running.has_exited());
         assert!(computer.begin_start().is_err());
-        assert!(computer.finish_start(pending.unwrap().unwrap_or(0), machine()).is_err());
-        assert!(computer.lock().running().is_none());
+
+        // Closing does not wait for a start that is under way, and that
+        // start's machine is ended when it arrives.
+        let computer = Computer::default();
+        let ticket = computer.begin_start().unwrap().unwrap();
+        assert!(computer.stop(true));
+        assert!(computer.finish_start(ticket, machine()).is_err());
+        assert!(computer.running().is_none());
     }
 
     #[test]
@@ -251,12 +289,12 @@ mod tests {
         let computer = Computer::default();
         let ticket = computer.begin_start().unwrap().unwrap();
         computer.finish_start(ticket, machine()).unwrap();
-        let old = computer.lock().running().unwrap();
-        computer.stop(false);
+        let old = computer.running().unwrap();
+        assert!(computer.stop(false));
         let ticket = computer.begin_start().unwrap().unwrap();
         computer.finish_start(ticket, machine()).unwrap();
 
         assert!(computer.end(&old));
-        assert!(computer.lock().running().is_some_and(|current| !Arc::ptr_eq(&current, &old)));
+        assert!(computer.running().is_some_and(|current| !Arc::ptr_eq(&current, &old)));
     }
 }

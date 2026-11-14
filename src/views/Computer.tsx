@@ -44,11 +44,12 @@ export function Computer() {
           try {
             png = await invoke<ArrayBuffer>("vm_frame");
           } catch (reason) {
-            // The Rust side has already ended a machine whose screen it could
-            // not read, so there is nothing left to stop here.
+            // The Rust side ends a machine whose screen it cannot read. Ask
+            // whether it managed to, so that Stop stays on screen if not.
+            const running = await invoke<boolean>("vm_status").catch(() => false);
             if (live) {
               setError(String(reason));
-              setPower("off");
+              if (!running) setPower("off");
             }
             return;
           }
