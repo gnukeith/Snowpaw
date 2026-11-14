@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Dialog } from "../components/Dialog";
 import { Input } from "../components/Input";
+import { Segmented } from "../components/Segmented";
 import { maxNameLength } from "../data/agents";
 import { modes, type Theme } from "../theme/theme";
 import styles from "./Settings.module.css";
@@ -69,19 +70,12 @@ function Appearance({ theme, onThemeChange }: Props) {
   return (
     <>
       <Row label="Theme" hint="System follows your desktop's light or dark setting.">
-        <div className={styles.segmented} role="radiogroup" aria-label="Theme">
-          {modes.map((mode) => (
-            <label key={mode} className={styles.segment}>
-              <input
-                type="radio"
-                name="theme-mode"
-                checked={theme.mode === mode}
-                onChange={() => onThemeChange({ ...theme, mode })}
-              />
-              {mode}
-            </label>
-          ))}
-        </div>
+        <Segmented
+          label="Theme"
+          options={modes}
+          value={theme.mode}
+          onChange={(mode) => onThemeChange({ ...theme, mode })}
+        />
       </Row>
       <Row label="Accent" hint="One hue tints the whole app.">
         <input

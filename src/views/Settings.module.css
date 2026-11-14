@@ -72,41 +72,6 @@
   width: var(--setting-width);
 }
 
-/* Segmented control: real radio inputs, drawn as one pill. */
-.segmented {
-  display: flex;
-  flex: none;
-  padding: calc(var(--hairline) * 2);
-  border-radius: var(--radius-control);
-  background: var(--hover);
-}
-
-.segment {
-  display: grid;
-  place-items: center;
-  height: calc(var(--control-height) - var(--hairline) * 4);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-nested);
-  color: var(--text-muted);
-  text-transform: capitalize;
-}
-
-.segment input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.segment:has(input:checked) {
-  background: var(--surface);
-  box-shadow: var(--shadow-raised);
-  color: var(--text);
-}
-
-.segment:has(input:focus-visible) {
-  outline: calc(var(--hairline) * 2) solid var(--accent);
-}
-
 /* Hue slider: the track shows every hue the thumb can pick. */
 .hue {
   flex: none;
