@@ -37,16 +37,16 @@ export function Conversation(props: Props) {
   const wasOpen = useRef(props.panelOpen);
 
   // Focus went into the panel when it opened. When it closes, focus comes
-  // back to the button that opens it.
+  // back to the button that opens it. That waits for the next frame: in a
+  // narrow window the conversation was hidden behind the panel, and it can
+  // only take focus once the page has been laid out without the panel.
   useEffect(() => {
-    if (wasOpen.current && !props.panelOpen) opener.current?.focus();
+    const closed = wasOpen.current && !props.panelOpen;
     wasOpen.current = props.panelOpen;
+    if (!closed) return;
+    const frame = requestAnimationFrame(() => opener.current?.focus());
+    return () => cancelAnimationFrame(frame);
   }, [props.panelOpen]);
-
-  // Keep the newest message in view, and start at the bottom of a conversation.
-  useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
-  }, [agent.id, messages.length]);
 
   function send(event?: FormEvent) {
     event?.preventDefault();
