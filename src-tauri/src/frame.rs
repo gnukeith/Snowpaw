@@ -6,6 +6,10 @@
 use gtk::prelude::*;
 use tauri::{State, WebviewWindow, Window};
 
+/// Marks the app's own window, so that what is done to its frame is not also
+/// done to a file chooser or any other window the toolkit opens for the app.
+const BARE_CLASS: &str = "snowpaw-bare";
+
 /// What the page draws when the desktop has no button layout to offer.
 const FALLBACK_BUTTONS: &str = ":close";
 
@@ -50,8 +54,10 @@ fn remove_title_bar(window: &WebviewWindow) -> Result<(), String> {
 /// ends, on top only. The frame is made a rectangle too: all four corners then
 /// look alike. If this fails the window still works, with the notches.
 fn square_the_frame(window: &gtk::ApplicationWindow) {
+    window.style_context().add_class(BARE_CLASS);
     let style = gtk::CssProvider::new();
-    let loaded = style.load_from_data(b"decoration { border-radius: 0; }");
+    let rule = format!(".{BARE_CLASS} decoration {{ border-radius: 0; }}");
+    let loaded = style.load_from_data(rule.as_bytes());
     match (loaded, gtk::prelude::GtkWindowExt::screen(window)) {
         (Ok(()), Some(screen)) => gtk::StyleContext::add_provider_for_screen(
             &screen,
