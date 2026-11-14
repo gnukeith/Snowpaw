@@ -1,8 +1,9 @@
 import { math } from "./math/index.ts";
+import { plot } from "./plot/index.ts";
 import type { Block, Plugin } from "./types.ts";
 
 /* The plugins Snowpaw ships with. To add one, add it here. */
-export const plugins: readonly Plugin[] = [math];
+export const plugins: readonly Plugin[] = [math, plot];
 
 const storageKey = "snowpaw.plugins.off";
 
