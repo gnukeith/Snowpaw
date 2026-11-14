@@ -13,6 +13,8 @@ export function Computer() {
   const [power, setPower] = useState<Power>("unknown");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // True while the machine runs but its latest frame could not be drawn.
+  const [undrawn, setUndrawn] = useState(false);
   const screen = useRef<HTMLCanvasElement>(null);
   const action = useRef<HTMLButtonElement>(null);
   // Set when Start or Stop was pressed, so focus can follow to the button that replaces it.
@@ -38,14 +40,9 @@ export function Computer() {
     (async () => {
       while (live) {
         if (!document.hidden) {
+          let png: ArrayBuffer;
           try {
-            const png = await invoke<ArrayBuffer>("vm_frame");
-            const frame = await createImageBitmap(new Blob([png], { type: "image/png" }));
-            try {
-              if (live && screen.current) paint(screen.current, frame);
-            } finally {
-              frame.close();
-            }
+            png = await invoke<ArrayBuffer>("vm_frame");
           } catch (reason) {
             // The Rust side has already ended a machine whose screen it could
             // not read, so there is nothing left to stop here.
@@ -55,12 +52,26 @@ export function Computer() {
             }
             return;
           }
+          // A frame that arrives but cannot be drawn is this side's problem.
+          // The machine is still running, so keep Stop on screen and say so.
+          try {
+            const frame = await createImageBitmap(new Blob([png], { type: "image/png" }));
+            try {
+              if (live && screen.current) paint(screen.current, frame);
+            } finally {
+              frame.close();
+            }
+            if (live) setUndrawn(false);
+          } catch {
+            if (live) setUndrawn(true);
+          }
         }
         await new Promise((resolve) => setTimeout(resolve, frameInterval));
       }
     })();
     return () => {
       live = false;
+      setUndrawn(false);
     };
   }, [power]);
 
@@ -85,9 +96,11 @@ export function Computer() {
     }
   }
 
-  const problem = error && (
+  const message =
+    error ?? (undrawn ? "The screen could not be drawn. The computer is still running." : null);
+  const problem = message && (
     <p className={styles.error} role="alert">
-      {error}
+      {message}
     </p>
   );
 
