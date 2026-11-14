@@ -39,6 +39,9 @@
   --avatar-xl: calc(var(--unit) * 20);
   --sidebar-width: calc(var(--unit) * 66);
   --conversation-min: calc(var(--unit) * 80);
+  --panel-width: calc(var(--unit) * 110);
+  /* The narrowest window that fits the sidebar, a conversation and a panel. */
+  --roomy-width: calc(var(--sidebar-width) + var(--conversation-min) + var(--panel-width));
   --settings-nav-width: calc(var(--unit) * 50);
   --dialog-width: calc(var(--unit) * 100);
   --dialog-height: calc(var(--unit) * 120);

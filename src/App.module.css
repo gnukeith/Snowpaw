@@ -11,9 +11,12 @@
   overflow: hidden;
 }
 
+.main .panel {
+  margin-inline-end: var(--edge);
+}
+
 .panel {
   height: 100%;
-  margin-inline-end: var(--edge);
   overflow: hidden;
   background: var(--surface);
   border: var(--hairline) solid var(--border);

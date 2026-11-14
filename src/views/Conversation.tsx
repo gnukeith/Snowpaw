@@ -12,6 +12,9 @@ interface Props {
   messages: Message[];
   /** False when the pin limit is reached and this agent is not pinned. */
   canPin: boolean;
+  /** Whether the agent's panel is showing beside the conversation. */
+  panelOpen: boolean;
+  onTogglePanel: () => void;
   onSend: (text: string) => void;
   onTogglePin: () => void;
   onEdit: () => void;
@@ -26,7 +29,8 @@ const clock = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
-export function Conversation({ agent, agents, messages, canPin, onSend, onTogglePin, onEdit }: Props) {
+export function Conversation(props: Props) {
+  const { agent, agents, messages, canPin, onSend, onTogglePin, onEdit } = props;
   const [draft, setDraft] = useState("");
   const end = useRef<HTMLDivElement>(null);
 
@@ -54,10 +58,17 @@ export function Conversation({ agent, agents, messages, canPin, onSend, onToggle
   return (
     <div className={styles.conversation}>
       <header className={styles.header}>
-        <span className={styles.who}>
-          <Avatar agent={agent} size="sm" />
-          <h1 className={styles.name}>{agent.name}</h1>
-        </span>
+        <h1 className={styles.heading}>
+          <button
+            className={styles.who}
+            aria-expanded={props.panelOpen}
+            title={props.panelOpen ? "Hide what this agent is doing" : "Show what this agent is doing"}
+            onClick={props.onTogglePanel}
+          >
+            <Avatar agent={agent} size="sm" />
+            <span className={styles.name}>{agent.name}</span>
+          </button>
+        </h1>
         <div className={styles.actions}>
           <IconButton
             icon="pin"

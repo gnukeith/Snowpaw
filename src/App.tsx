@@ -6,6 +6,7 @@ import { canPin, loadAgents, saveAgents, type Agent } from "./data/agents";
 import { userMessage, type Conversations } from "./data/conversation";
 import { applyTheme, loadTheme, saveTheme } from "./theme/theme";
 import { AgentEditor } from "./views/AgentEditor";
+import { AgentPanel } from "./views/AgentPanel";
 import { Conversation } from "./views/Conversation";
 import { Settings } from "./views/Settings";
 
@@ -20,6 +21,7 @@ export function App() {
   // The agent being edited, "new" for one being made, or null.
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   useEffect(() => {
     applyTheme(theme);
@@ -65,6 +67,8 @@ export function App() {
               agents={agents}
               messages={conversations[selected.id] ?? []}
               canPin={selected.pinned || canPin(agents)}
+              panelOpen={panelOpen}
+              onTogglePanel={() => setPanelOpen(!panelOpen)}
               onSend={(text) =>
                 setConversations((all) => ({
                   ...all,
@@ -85,6 +89,9 @@ export function App() {
           )}
         </div>
       </main>
+      {selected && panelOpen && (
+        <AgentPanel agent={selected} onClose={() => setPanelOpen(false)} />
+      )}
       {editing && (
         <AgentEditor
           agent={editing === "new" ? undefined : editing}
