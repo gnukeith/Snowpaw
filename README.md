@@ -16,6 +16,10 @@ pnpm install
 pnpm tauri dev
 ```
 
+In a development build, Settings has a Developer category that loads sample
+agents, so every part of the app can be seen with something in it. Open
+Settings by clicking your name at the bottom of the sidebar.
+
 ## The computer's operating system
 
 The Computer view boots Fedora Workstation 45 from a live image that the app
@@ -42,3 +46,11 @@ it prints anything else, delete the image.
 
 The image is attached read-only and the machine has no disk of its own, so
 nothing the guest does survives a stop.
+
+## Check it
+
+```sh
+pnpm typecheck
+pnpm test
+(cd src-tauri && cargo test)
+```

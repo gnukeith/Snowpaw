@@ -1,14 +1,50 @@
 .frame {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  display: flex;
   height: 100%;
 }
 
 /* The sidebar already keeps one edge of space on its own right side. */
+.main {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  padding: var(--edge) 0;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+/* In a narrow window the agent's panel takes all the room and the
+   conversation is left with no width. It is hidden then, so that the keyboard
+   cannot reach what cannot be seen. */
+@container (width = 0) {
+  .main > * {
+    visibility: hidden;
+  }
+}
+
+.main .panel {
+  margin-inline-end: var(--edge);
+}
+
 .panel {
-  margin: var(--edge) var(--edge) var(--edge) 0;
+  height: 100%;
   overflow: hidden;
   background: var(--surface);
   border: var(--hairline) solid var(--border);
   border-radius: var(--radius-panel);
+}
+
+/* With no agent there is no conversation, and so no header. A bare one takes
+   its place, to hold the window's buttons and to move the window by. */
+.blank {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+}
+
+.bar {
+  display: flex;
+  justify-content: flex-end;
+  min-height: calc(var(--control-height) + var(--edge) * 2);
+  padding: var(--edge);
 }

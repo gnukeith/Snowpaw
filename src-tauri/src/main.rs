@@ -1,6 +1,7 @@
 // Do not open a console window next to the app on Windows release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod frame;
 mod qmp;
 mod vm;
 
@@ -157,8 +158,9 @@ impl Computer {
     }
 }
 
-// The commands below are the whole surface the webview gets. None takes an
-// argument: paths, QEMU options and control messages are all decided in Rust.
+// The commands below, with those in `frame`, are the whole surface the webview
+// gets. None here takes an argument: paths, QEMU options and control messages
+// are all decided in Rust. The one in `frame` that does takes a colour.
 // Details of a failure go to the log, and the webview gets a fixed sentence.
 
 #[tauri::command(async)]
@@ -204,10 +206,36 @@ fn vm_frame(computer: State<'_, Computer>) -> Result<Response, &'static str> {
     })
 }
 
+/// What this computer calls itself, which the app shows as the user's name
+/// until they choose one. Empty if the system will not say.
+#[tauri::command]
+fn device_name() -> String {
+    std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|name| name.trim().to_owned())
+        .unwrap_or_default()
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Computer::default())
-        .invoke_handler(tauri::generate_handler![vm_start, vm_stop, vm_status, vm_frame])
+        .setup(|app| {
+            let window = app.get_webview_window("main").ok_or("there is no main window")?;
+            app.manage(frame::open(&window));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            vm_start,
+            vm_stop,
+            vm_status,
+            vm_frame,
+            device_name,
+            frame::window_buttons,
+            frame::window_drag,
+            frame::window_minimize,
+            frame::window_toggle_maximize,
+            frame::window_close,
+            frame::window_tint
+        ])
         .build(tauri::generate_context!())
         .expect("failed to start Snowpaw")
         .run(|app, event| {

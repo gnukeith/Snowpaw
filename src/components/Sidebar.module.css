@@ -1,49 +1,130 @@
 .sidebar {
   display: flex;
+  flex: none;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
+  width: var(--sidebar-width);
   padding: var(--edge);
 }
 
-.brand,
-.item {
+.tools,
+.search {
   display: flex;
-  align-items: center;
+  flex: none;
   gap: var(--space-2);
-  height: var(--control-height);
-  padding: 0 var(--space-2);
 }
 
 .brand {
-  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline-start: var(--space-2);
   font-weight: var(--weight-strong);
 }
 
 .logo {
-  width: var(--icon-size);
-  height: var(--icon-size);
+  width: var(--avatar-sm);
+  height: var(--avatar-sm);
   fill: var(--accent);
-}
-
-.item {
-  border: 0;
-  border-radius: var(--radius-control);
-  background: none;
-  color: var(--text-muted);
-  text-align: start;
-}
-
-.item:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-
-.item[aria-current="page"] {
-  background: var(--selected);
-  color: var(--text);
-  font-weight: var(--weight-medium);
 }
 
 .spacer {
   flex: 1;
+}
+
+/* Up to three, each a third of the row wide, and in the middle of the row
+   when there are fewer. */
+.pins {
+  display: flex;
+  flex: none;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.pin,
+.row,
+.user {
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+}
+
+.pin:hover,
+.row:hover,
+.user:hover {
+  background: var(--hover);
+}
+
+.pin[aria-current="page"],
+.row[aria-current="page"] {
+  background: var(--selected);
+}
+
+.pin {
+  display: flex;
+  flex: 0 0 calc((100% - var(--space-1) * 2) / 3);
+  flex-direction: column;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-1) var(--space-2);
+}
+
+/* Up to two lines, so a long name does not push the other pins around. */
+.pinName {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-align: center;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.row,
+.user {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  text-align: start;
+}
+
+.rowText {
+  display: grid;
+  min-width: 0;
+}
+
+.rowName,
+.preview,
+.userName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowName,
+.userName {
+  font-weight: var(--weight-medium);
+}
+
+.preview,
+.note {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.note {
+  padding: 0 var(--space-2);
 }

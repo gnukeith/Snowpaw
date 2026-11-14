@@ -1,0 +1,60 @@
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  margin: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.label {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Reasoning reads as an aside: set in from a rule, in the muted colour. */
+.thinking {
+  padding-inline-start: var(--space-3);
+  border-inline-start: calc(var(--hairline) * 2) solid var(--border);
+  color: var(--text-muted);
+  cursor: text;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.output {
+  overflow: hidden;
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  font: var(--text-sm) / var(--leading) var(--font-mono);
+  cursor: text;
+  user-select: text;
+}
+
+.source {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: var(--hairline) solid var(--border);
+  font: inherit;
+  font-weight: var(--weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.text {
+  max-height: var(--output-height);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow: auto;
+  font: inherit;
+}

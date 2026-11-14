@@ -1,0 +1,20 @@
+.field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The picture stands a little apart from the buttons that change it. */
+.row > :first-child {
+  margin-inline-end: var(--space-2);
+}
+
+.error {
+  color: var(--danger);
+}

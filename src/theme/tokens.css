@@ -26,18 +26,43 @@
   --radius-control: calc(var(--radius-panel) - var(--hairline) - var(--edge));
   --radius-nested: calc(var(--radius-control) - var(--hairline) * 2);
   --radius-round: 50%;
+  /* Message bubbles and the box you type in: rounder than a control. */
+  --radius-bubble: calc(var(--unit) * 4.5);
 
   /* Fixed sizes. */
   --control-height: var(--space-8);
   --icon-size: var(--space-4);
   --icon-stroke: 1.5;
-  --sidebar-width: calc(var(--unit) * 60);
+  --avatar-sm: var(--space-6);
+  --avatar-md: var(--space-8);
+  --avatar-lg: calc(var(--unit) * 14);
+  --avatar-xl: calc(var(--unit) * 20);
+  --sidebar-width: calc(var(--unit) * 66);
+  --conversation-min: calc(var(--unit) * 80);
+  /* The agent's panel: as wide as the user last dragged it, within these two.
+     Dragging sets --panel-width on the root element. */
+  --panel-width: calc(var(--unit) * 120);
+  --panel-min: calc(var(--unit) * 90);
+  /* The narrowest window that fits the sidebar, a conversation and a panel. */
+  --roomy-width: calc(var(--sidebar-width) + var(--conversation-min) + var(--panel-min));
+  /* Messages keep to a column this wide in the middle of a wide conversation,
+     so that both sides of it stay near each other. */
+  --conversation-width: calc(var(--unit) * 180);
   --settings-nav-width: calc(var(--unit) * 50);
+  --setting-width: calc(var(--unit) * 50);
+  --dialog-width: calc(var(--unit) * 100);
+  --menu-width: calc(var(--unit) * 40);
+  --dialog-height: calc(var(--unit) * 120);
+  /* Tallest a block of output gets before it scrolls. */
+  --output-height: calc(var(--unit) * 60);
   --content-width: calc(var(--unit) * 160);
   --prose-width: calc(var(--unit) * 100);
+  /* How much of a conversation's width one message may take. */
+  --bubble-width: 85%;
 
   /* Type. */
   --font: system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
   --text-sm: 12px;
   --text-md: 14px;
   --text-lg: 20px;
@@ -54,7 +79,17 @@
   --text-muted: light-dark(oklch(52% 0.02 var(--hue)), oklch(70% 0.015 var(--hue)));
   --accent: light-dark(oklch(56% 0.17 var(--hue)), oklch(74% 0.13 var(--hue)));
   --danger: light-dark(oklch(52% 0.19 25), oklch(74% 0.15 25));
+  --success: light-dark(oklch(50% 0.15 150), oklch(78% 0.15 150));
   --on-accent: light-dark(oklch(99% 0.005 var(--hue)), oklch(18% 0.02 var(--hue)));
+  /* Messages. Yours are the inverse of the surface; an agent's sit just above it. */
+  --bubble: color-mix(in oklch, var(--text) 8%, var(--surface));
+  --bubble-user: var(--text);
+  --on-bubble-user: var(--surface);
+  /* Lines a change added and removed. */
+  --added: color-mix(in oklch, var(--success) 16%, transparent);
+  --removed: color-mix(in oklch, var(--danger) 16%, transparent);
+  /* Dims the app behind a dialog. */
+  --scrim: color-mix(in oklch, black 45%, transparent);
   --hover: color-mix(in oklch, var(--text) 6%, transparent);
   --selected: color-mix(in oklch, var(--accent) 14%, transparent);
   /* Hover for things that have a solid fill of their own. */
@@ -67,6 +102,15 @@
     oklch(68% 0.15 360)
   );
   --shadow-raised: 0 var(--hairline) calc(var(--unit) / 2) color-mix(in oklch, black 14%, transparent);
+  --shadow-dialog: 0 var(--space-2) var(--space-8) color-mix(in oklch, black 30%, transparent);
+}
+
+/* An agent without a picture gets a paw on a hue of its own. A colour built
+   from a custom property is worked out where it is declared, so these are
+   declared on the avatar, which is where --avatar-hue is set. */
+[data-avatar] {
+  --avatar-bg: oklch(74% 0.12 var(--avatar-hue));
+  --avatar-mark: oklch(27% 0.06 var(--avatar-hue));
 }
 
 /* "System" follows the desktop. Light and Dark pin the scheme. */

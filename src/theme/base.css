@@ -4,6 +4,17 @@
   box-sizing: border-box;
 }
 
+/* Nothing in the app draws a scrollbar. What is longer than its place still
+   scrolls, with the wheel, a touchpad, touch or the keyboard. The second rule
+   is for WebKit builds that do not know the first. */
+* {
+  scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
 html,
 body,
 #root {
@@ -22,12 +33,14 @@ body {
 
 h1,
 h2,
+h3,
 p {
   margin: 0;
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
   color: inherit;
 }

@@ -1,0 +1,231 @@
+.conversation {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+}
+
+/* The name sits in the middle while there is room: the space before it
+   grows as much as the buttons after it. When there is not, the buttons keep
+   their size and the name moves over, then shortens. */
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--edge);
+}
+
+.balance,
+.actions {
+  flex: 1 1 0;
+}
+
+.heading {
+  min-width: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+}
+
+/* The agent's face and name open its panel. */
+.who {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  height: var(--control-height);
+  padding: 0 var(--space-3) 0 var(--space-1);
+  border: 0;
+  border-radius: var(--control-height);
+  background: none;
+  font-weight: inherit;
+}
+
+.who:hover,
+.who[aria-expanded="true"] {
+  background: var(--hover);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  /* Its buttons are never squeezed: it gives way last. */
+  min-width: max-content;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-4) var(--space-6);
+  overflow-y: auto;
+}
+
+/* Each message, in a column down the middle of the conversation. Messages in
+   a run from one sender sit close together. */
+.entry {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  max-width: var(--conversation-width);
+  margin-top: var(--space-1);
+}
+
+/* The first message of a run, where the speaker changes: a little air. */
+.turn {
+  composes: entry;
+  margin-top: var(--space-3);
+}
+
+.empty,
+.time {
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.empty {
+  margin: auto;
+}
+
+.time {
+  padding: var(--space-4) 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* Lines up with the message under it, past the face beside that message. */
+.sender {
+  padding: var(--space-2) 0 0 calc(var(--avatar-md) + var(--space-2));
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* A message and the face of whoever wrote it: theirs on the left, yours on
+   the right. The face's place is kept even where no face is shown, so every
+   message in a run starts at the same edge. */
+.row,
+.mineRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.mineRow {
+  flex-direction: row-reverse;
+}
+
+.face {
+  flex: none;
+  width: var(--avatar-md);
+}
+
+/* A task the agent would like to schedule, waiting for a yes. It hangs under
+   the message that proposes it, past the face beside that message. */
+.proposal {
+  display: grid;
+  gap: var(--space-1);
+  align-self: flex-start;
+  max-width: min(var(--prose-width), var(--bubble-width));
+  margin-inline-start: calc(var(--avatar-md) + var(--space-2));
+  padding: var(--space-3);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-bubble);
+}
+
+.status {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.task {
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Read out, never seen. */
+.unseen {
+  position: absolute;
+  width: var(--hairline);
+  height: var(--hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Messages are the one part of the app that is text to read and copy. */
+.theirs {
+  max-width: min(var(--prose-width), var(--bubble-width));
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-bubble);
+  background: var(--bubble);
+  cursor: text;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.mine {
+  composes: theirs;
+  background: var(--bubble-user);
+  color: var(--on-bubble-user);
+}
+
+/* Agent to agent: outlined, so it is plain that it was not said to you. */
+.between {
+  composes: theirs;
+  border: var(--hairline) solid var(--border);
+  background: none;
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  /* As wide as the column of messages above it, and in line with it. */
+  width: min(100% - var(--space-6) * 2, var(--conversation-width));
+  margin: 0 auto var(--space-4);
+  padding: var(--space-1);
+  border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-bubble);
+}
+
+.composer:focus-within {
+  border-color: var(--accent);
+}
+
+/* Grows with what is typed, up to a few lines, then scrolls. */
+.draft {
+  flex: 1;
+  min-width: 0;
+  max-height: calc(var(--control-height) * 5);
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  background: none;
+  line-height: var(--space-6);
+  cursor: text;
+  field-sizing: content;
+  resize: none;
+}
+
+/* The box around it shows the focus instead. */
+.draft:focus-visible {
+  outline: 0;
+}
+
+.draft::placeholder {
+  color: var(--text-muted);
+}

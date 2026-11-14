@@ -1,30 +1,272 @@
-import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useId, useRef, useState } from "react";
 import styles from "./App.module.css";
+import { Button } from "./components/Button";
+import { Empty } from "./components/Empty";
+import { PanelResizer } from "./components/PanelResizer";
 import { Sidebar } from "./components/Sidebar";
-import { applyTheme, loadTheme, saveTheme } from "./theme/theme";
-import { Computer } from "./views/Computer";
-import { Conversations } from "./views/Conversations";
+import { useWindowDrag, WindowButtons, WindowFrame } from "./components/WindowButtons";
+import {
+  canPin,
+  cleanName,
+  loadAgents,
+  parseAgents,
+  saveAgents,
+  type Agent,
+} from "./data/agents";
+import {
+  acceptProposal,
+  userMessage,
+  workOf,
+  type AllWork,
+  type Message,
+  type TaskDraft,
+} from "./data/conversation";
+import { parseButtonLayout, type ButtonLayout } from "./data/frame";
+import {
+  loadName,
+  loadPanelWidth,
+  loadPicture,
+  saveName,
+  savePanelWidth,
+  savePicture,
+} from "./data/profile";
+import { applyTheme, loadTheme, saveTheme, tintWindow } from "./theme/theme";
+import { AgentEditor } from "./views/AgentEditor";
+import { AgentPanel } from "./views/AgentPanel";
+import { Conversation } from "./views/Conversation";
 import { Settings } from "./views/Settings";
-
-export type View = "conversations" | "computer" | "settings";
+import { TaskEditor } from "./views/TaskEditor";
 
 export function App() {
-  const [view, setView] = useState<View>("conversations");
   const [theme, setTheme] = useState(loadTheme);
+  // What the user typed for their own name, and what stands in while that is empty.
+  const [name, setName] = useState(loadName);
+  const [picture, setPicture] = useState(loadPicture);
+  const [deviceName, setDeviceName] = useState("");
+  const [agents, setAgents] = useState(loadAgents);
+  const [unsaved, setUnsaved] = useState(false);
+  const [selectedId, setSelectedId] = useState<string>();
+  // Kept in memory only: nothing answers yet, and where an agent's work is
+  // stored is a decision for when something does.
+  const [work, setWork] = useState<AllWork>({});
+  // The agent being edited, "new" for one being made, or null.
+  const [editing, setEditing] = useState<Agent | "new" | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // The proposed task being changed before it is agreed to, and whose it is.
+  const [proposing, setProposing] = useState<{ agentId: string; message: Message }>();
+  const [panelOpen, setPanelOpen] = useState(false);
+  // How wide the user dragged the agent's panel. Undefined: as it comes.
+  const [panelWidth, setPanelWidth] = useState(loadPanelWidth);
+  const side = useRef<HTMLElement>(null);
+  const panelId = useId();
+  // The window buttons to draw. None until the Rust side says the window has
+  // no title bar, and none ever where it kept one.
+  const [buttons, setButtons] = useState<ButtonLayout>();
 
   useEffect(() => {
     applyTheme(theme);
     saveTheme(theme);
+    tintWindow();
+    // "System" changes colour when the desktop does, with nothing set here.
+    const desktop = matchMedia("(prefers-color-scheme: dark)");
+    desktop.addEventListener("change", tintWindow);
+    return () => desktop.removeEventListener("change", tintWindow);
   }, [theme]);
+
+  useEffect(() => {
+    // Both are written every time, so that one failing is not hidden by the
+    // other succeeding.
+    const saved = [saveAgents(agents), savePicture(picture)];
+    setUnsaved(saved.includes(false));
+  }, [agents, picture]);
+
+  useEffect(() => saveName(name), [name]);
+
+  useEffect(() => {
+    // On the root element, where the tokens that follow from it are worked out.
+    const root = document.documentElement.style;
+    if (panelWidth === undefined) root.removeProperty("--panel-width");
+    else root.setProperty("--panel-width", `${panelWidth}px`);
+    savePanelWidth(panelWidth);
+  }, [panelWidth]);
+
+  useEffect(() => {
+    // Without an answer the fallback below stays, so a failure needs no handling.
+    invoke<string>("device_name").then(setDeviceName, () => {});
+  }, []);
+
+  useEffect(() => {
+    invoke<string | null>("window_buttons").then(
+      (layout) => layout !== null && setButtons(parseButtonLayout(layout)),
+      () => {},
+    );
+  }, []);
+
+  useWindowDrag(buttons !== undefined);
+
+  const defaultName = cleanName(deviceName) || "This computer";
+
+  // Sample agents with work to show, for looking at the app while it is being
+  // built. Development builds only: a release build drops this and the sample.
+  const developer = import.meta.env.DEV
+    ? {
+        async load() {
+          const { isSample, sample } = await import("./dev/sample");
+          const { agents: sampleAgents, work: sampleWork } = sample();
+          // Read as if from storage, which releases any pins beyond the limit:
+          // the user's own pins come first, so it is the sample's that go.
+          setAgents((all) =>
+            parseAgents([...all.filter((agent) => !isSample(agent)), ...sampleAgents]),
+          );
+          setWork((all) => ({ ...all, ...sampleWork }));
+          setSelectedId(sampleAgents[0].id);
+        },
+        async remove() {
+          const { isSample } = await import("./dev/sample");
+          setAgents((all) => all.filter((agent) => !isSample(agent)));
+        },
+      }
+    : undefined;
+
+  const selected = agents.find((agent) => agent.id === selectedId) ?? agents[0];
+
+  function save(agent: Agent) {
+    const known = agents.some((other) => other.id === agent.id);
+    setAgents(known ? agents.map((other) => (other.id === agent.id ? agent : other)) : [...agents, agent]);
+    setSelectedId(agent.id);
+    setEditing(null);
+  }
+
+  function togglePin(agent: Agent) {
+    if (!agent.pinned && !canPin(agents)) return;
+    setAgents(agents.map((other) => (other.id === agent.id ? { ...agent, pinned: !agent.pinned } : other)));
+  }
+
+  function schedule(agentId: string, message: Message, task: TaskDraft) {
+    setWork((all) => ({ ...all, [agentId]: acceptProposal(workOf(all, agentId), message.id, task) }));
+    setProposing(undefined);
+  }
+
+  function remove(agent: Agent) {
+    setAgents(agents.filter((other) => other.id !== agent.id));
+    setWork(({ [agent.id]: _gone, ...rest }) => rest);
+    setEditing(null);
+  }
+
+  const user = { name: cleanName(name) || defaultName, picture };
+
+  // The buttons on the far side belong in the window's far corner, which is
+  // the agent's panel while that is open and the conversation otherwise.
+  const farButtons = <WindowButtons buttons={buttons?.end ?? []} />;
 
   return (
     <div className={styles.frame}>
-      <Sidebar view={view} onNavigate={setView} />
-      <main className={styles.panel}>
-        {view === "conversations" && <Conversations />}
-        {view === "computer" && <Computer />}
-        {view === "settings" && <Settings theme={theme} onThemeChange={setTheme} />}
+      <Sidebar
+        agents={agents}
+        work={work}
+        selected={selected}
+        user={user}
+        unsaved={unsaved}
+        windowButtons={buttons?.start.length ? <WindowButtons buttons={buttons.start} /> : null}
+        canPin={canPin(agents)}
+        onTogglePin={togglePin}
+        onEdit={setEditing}
+        onSelect={(agent) => setSelectedId(agent.id)}
+        onCreate={() => setEditing("new")}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+      <main className={styles.main}>
+        <div className={styles.panel}>
+          {selected ? (
+            <Conversation
+              // A new conversation for each agent, so a message half written
+              // to one is never sent to another.
+              key={selected.id}
+              agent={selected}
+              agents={agents}
+              user={user}
+              messages={workOf(work, selected.id).messages}
+              canPin={selected.pinned || canPin(agents)}
+              panelOpen={panelOpen}
+              windowButtons={!panelOpen && farButtons}
+              onTogglePanel={() => setPanelOpen(!panelOpen)}
+              onSend={(text) =>
+                setWork((all) => {
+                  const mine = workOf(all, selected.id);
+                  return { ...all, [selected.id]: { ...mine, messages: [...mine.messages, userMessage(text)] } };
+                })
+              }
+              onSchedule={(message) =>
+                message.proposal && schedule(selected.id, message, message.proposal.task)
+              }
+              onEditProposal={(message) => setProposing({ agentId: selected.id, message })}
+              onTogglePin={() => togglePin(selected)}
+              onEdit={() => setEditing(selected)}
+            />
+          ) : (
+            <div className={styles.blank}>
+              <header className={styles.bar} data-window-drag>
+                {farButtons}
+              </header>
+              <Empty title="No agents yet" hint="Make one, give it a name and a picture, and it lives here.">
+                <Button primary onClick={() => setEditing("new")}>
+                  New agent
+                </Button>
+              </Empty>
+            </div>
+          )}
+        </div>
+        {selected && panelOpen && (
+          <PanelResizer
+            panel={side}
+            controls={panelId}
+            label={`Width of what ${selected.name} is doing`}
+            onResize={(width) => setPanelWidth(width === undefined ? undefined : Math.max(0, width))}
+          />
+        )}
       </main>
+      {selected && panelOpen && (
+        <AgentPanel
+          ref={side}
+          id={panelId}
+          agent={selected}
+          work={workOf(work, selected.id)}
+          windowButtons={farButtons}
+          onClose={() => setPanelOpen(false)}
+        />
+      )}
+      {/* Dialogs cover the window's buttons, so they draw their own. */}
+      <WindowFrame value={buttons}>
+        {editing && (
+          <AgentEditor
+            agent={editing === "new" ? undefined : editing}
+            onSave={save}
+            onDelete={remove}
+            onClose={() => setEditing(null)}
+          />
+        )}
+        {proposing?.message.proposal && (
+          <TaskEditor
+            task={proposing.message.proposal.task}
+            onSchedule={(task) => schedule(proposing.agentId, proposing.message, task)}
+            onClose={() => setProposing(undefined)}
+          />
+        )}
+        {settingsOpen && (
+          <Settings
+            name={name}
+            defaultName={defaultName}
+            onNameChange={setName}
+            picture={picture}
+            onPictureChange={setPicture}
+            theme={theme}
+            onThemeChange={setTheme}
+            developer={developer}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
+      </WindowFrame>
     </div>
   );
 }

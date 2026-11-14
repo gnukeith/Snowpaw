@@ -1,7 +1,8 @@
 .settings {
   display: grid;
+  flex: 1;
   grid-template-columns: var(--settings-nav-width) minmax(0, 1fr);
-  height: 100%;
+  min-height: 0;
 }
 
 .categories {
@@ -34,14 +35,13 @@
 }
 
 .content {
-  max-width: var(--content-width);
-  padding: var(--space-6) var(--space-8);
+  padding: var(--space-4) var(--space-6);
   overflow-y: auto;
 }
 
 .heading {
   margin-bottom: var(--space-4);
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   font-weight: var(--weight-strong);
 }
 
@@ -65,45 +65,23 @@
   font-size: var(--text-sm);
 }
 
-/* Segmented control: real radio inputs, drawn as one pill. */
-.segmented {
+.buttons {
   display: flex;
   flex: none;
-  padding: calc(var(--hairline) * 2);
-  border-radius: var(--radius-control);
-  background: var(--hover);
+  gap: var(--space-2);
 }
 
-.segment {
-  display: grid;
-  place-items: center;
-  height: calc(var(--control-height) - var(--hairline) * 4);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-nested);
-  color: var(--text-muted);
-  text-transform: capitalize;
-}
-
-.segment input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.segment:has(input:checked) {
-  background: var(--surface);
-  box-shadow: var(--shadow-raised);
-  color: var(--text);
-}
-
-.segment:has(input:focus-visible) {
-  outline: calc(var(--hairline) * 2) solid var(--accent);
+/* A text box in a row: as wide as the other controls, not as wide as the row. */
+.field {
+  display: flex;
+  flex: none;
+  width: var(--setting-width);
 }
 
 /* Hue slider: the track shows every hue the thumb can pick. */
 .hue {
   flex: none;
-  width: calc(var(--unit) * 50);
+  width: var(--setting-width);
   height: var(--space-2);
   margin: 0;
   appearance: none;

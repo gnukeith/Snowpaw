@@ -9,6 +9,9 @@ edition = "2024"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# The GTK that Tauri already builds on, named here to reach the window's title
+# bar. It has to stay the version Tauri uses.
+gtk = "0.18"
 libc = "0.2"
 serde_json = "1"
 tauri = { version = "2", features = [] }
