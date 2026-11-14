@@ -9,8 +9,15 @@ export interface Message {
   at: number;
 }
 
-/** Every conversation, by the id of the agent it is with. */
-export type Conversations = Record<string, Message[]>;
+/** Everything the app holds about one agent's work. */
+export interface Work {
+  messages: Message[];
+}
+
+export const noWork: Work = { messages: [] };
+
+/** Each agent's work, by the agent's id. */
+export type AllWork = Record<string, Work>;
 
 export function userMessage(text: string): Message {
   return { id: crypto.randomUUID(), from: "user", text, at: Date.now() };

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Button } from "../components/Button";
 import { Dialog } from "../components/Dialog";
 import { Input } from "../components/Input";
 import { Segmented } from "../components/Segmented";
@@ -14,17 +15,26 @@ interface Props {
   onNameChange: (name: string) => void;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
+  /** Present in development builds only. */
+  developer?: { load: () => void; remove: () => void };
   onClose: () => void;
 }
 
+interface Category {
+  id: string;
+  label: string;
+  Panel: (props: Props) => ReactNode;
+}
+
 /* To add a category, add an entry here. */
-const categories = [
+const categories: Category[] = [
   { id: "general", label: "General", Panel: General },
   { id: "appearance", label: "Appearance", Panel: Appearance },
-] as const;
+];
+if (import.meta.env.DEV) categories.push({ id: "developer", label: "Developer", Panel: Developer });
 
 export function Settings(props: Props) {
-  const [current, setCurrent] = useState<(typeof categories)[number]>(categories[0]);
+  const [current, setCurrent] = useState(categories[0]);
 
   return (
     <Dialog title="Settings" wide onClose={props.onClose}>
@@ -89,6 +99,17 @@ function Appearance({ theme, onThemeChange }: Props) {
         />
       </Row>
     </>
+  );
+}
+
+function Developer({ developer }: Props) {
+  return (
+    <Row label="Sample agents" hint="Agents with made-up work, to see every part of the app filled in.">
+      <div className={styles.buttons}>
+        <Button onClick={developer?.load}>Load</Button>
+        <Button onClick={developer?.remove}>Remove</Button>
+      </div>
+    </Row>
   );
 }
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { initials, type Agent } from "../data/agents";
-import type { Conversations } from "../data/conversation";
+import type { AllWork } from "../data/conversation";
 import { Avatar } from "./Avatar";
 import { IconButton } from "./IconButton";
 import { Input } from "./Input";
@@ -8,7 +8,7 @@ import styles from "./Sidebar.module.css";
 
 interface Props {
   agents: Agent[];
-  conversations: Conversations;
+  work: AllWork;
   selected?: Agent;
   userName: string;
   /** Set when agents could not be written to storage. */
@@ -19,7 +19,7 @@ interface Props {
 }
 
 export function Sidebar(props: Props) {
-  const { agents, conversations, selected, userName, unsaved } = props;
+  const { agents, work, selected, userName, unsaved } = props;
   // `null` while the search box is closed.
   const [query, setQuery] = useState<string | null>(null);
 
@@ -79,7 +79,7 @@ export function Sidebar(props: Props) {
             <span className={styles.rowText}>
               <span className={styles.rowName}>{agent.name}</span>
               <span className={styles.preview}>
-                {conversations[agent.id]?.at(-1)?.text ?? "No messages yet"}
+                {work[agent.id]?.messages.at(-1)?.text ?? "No messages yet"}
               </span>
             </span>
           </button>

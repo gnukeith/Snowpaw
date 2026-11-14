@@ -4,7 +4,7 @@ import styles from "./App.module.css";
 import { Button } from "./components/Button";
 import { Sidebar } from "./components/Sidebar";
 import { canPin, cleanName, loadAgents, saveAgents, type Agent } from "./data/agents";
-import { userMessage, type Conversations } from "./data/conversation";
+import { noWork, userMessage, type AllWork } from "./data/conversation";
 import { loadName, saveName } from "./data/profile";
 import { applyTheme, loadTheme, saveTheme } from "./theme/theme";
 import { AgentEditor } from "./views/AgentEditor";
@@ -20,9 +20,9 @@ export function App() {
   const [agents, setAgents] = useState(loadAgents);
   const [unsaved, setUnsaved] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
-  // Kept in memory only: nothing answers yet, and where conversations are
+  // Kept in memory only: nothing answers yet, and where an agent's work is
   // stored is a decision for when something does.
-  const [conversations, setConversations] = useState<Conversations>({});
+  const [work, setWork] = useState<AllWork>({});
   // The agent being edited, "new" for one being made, or null.
   const [editing, setEditing] = useState<Agent | "new" | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -46,6 +46,24 @@ export function App() {
 
   const defaultName = cleanName(deviceName) || "This computer";
 
+  // Sample agents with work to show, for looking at the app while it is being
+  // built. Development builds only: a release build drops this and the sample.
+  const developer = import.meta.env.DEV
+    ? {
+        async load() {
+          const { isSample, sample } = await import("./dev/sample");
+          const { agents: sampleAgents, work: sampleWork } = sample();
+          setAgents((all) => [...all.filter((agent) => !isSample(agent)), ...sampleAgents]);
+          setWork((all) => ({ ...all, ...sampleWork }));
+          setSelectedId(sampleAgents[0].id);
+        },
+        async remove() {
+          const { isSample } = await import("./dev/sample");
+          setAgents((all) => all.filter((agent) => !isSample(agent)));
+        },
+      }
+    : undefined;
+
   const selected = agents.find((agent) => agent.id === selectedId) ?? agents[0];
 
   function save(agent: Agent) {
@@ -57,7 +75,7 @@ export function App() {
 
   function remove(agent: Agent) {
     setAgents(agents.filter((other) => other.id !== agent.id));
-    setConversations(({ [agent.id]: _gone, ...rest }) => rest);
+    setWork(({ [agent.id]: _gone, ...rest }) => rest);
     setEditing(null);
   }
 
@@ -65,7 +83,7 @@ export function App() {
     <div className={styles.frame}>
       <Sidebar
         agents={agents}
-        conversations={conversations}
+        work={work}
         selected={selected}
         userName={cleanName(name) || defaultName}
         unsaved={unsaved}
@@ -79,15 +97,15 @@ export function App() {
             <Conversation
               agent={selected}
               agents={agents}
-              messages={conversations[selected.id] ?? []}
+              messages={(work[selected.id] ?? noWork).messages}
               canPin={selected.pinned || canPin(agents)}
               panelOpen={panelOpen}
               onTogglePanel={() => setPanelOpen(!panelOpen)}
               onSend={(text) =>
-                setConversations((all) => ({
-                  ...all,
-                  [selected.id]: [...(all[selected.id] ?? []), userMessage(text)],
-                }))
+                setWork((all) => {
+                  const mine = all[selected.id] ?? noWork;
+                  return { ...all, [selected.id]: { ...mine, messages: [...mine.messages, userMessage(text)] } };
+                })
               }
               onTogglePin={() => save({ ...selected, pinned: !selected.pinned })}
               onEdit={() => setEditing(selected)}
@@ -121,6 +139,7 @@ export function App() {
           onNameChange={setName}
           theme={theme}
           onThemeChange={setTheme}
+          developer={developer}
           onClose={() => setSettingsOpen(false)}
         />
       )}
