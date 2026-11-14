@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { acceptProposal, noWork, workOf } from "../src/data/conversation.ts";
+import { acceptProposal, isMoment, noWork, taskLine, workOf } from "../src/data/conversation.ts";
 
 test("an agent with no work yet has empty work", () => {
   assert.equal(workOf({}, "a"), noWork);
@@ -50,4 +50,24 @@ test("a message that proposes nothing, or is not there, schedules nothing", () =
   const work = { ...noWork, messages: [asking, plain] };
   assert.equal(acceptProposal(work, "m2", proposed), work);
   assert.equal(acceptProposal(work, "nope", proposed), work);
+});
+
+test("only numbers a date can hold are moments", () => {
+  for (const at of [0, 1000, -1000, 8.64e15]) assert.equal(isMoment(at), true);
+  for (const at of [NaN, Infinity, -Infinity, 8.64e15 + 1, undefined, "soon"]) assert.equal(isMoment(at), false);
+});
+
+test("a task without a valid time is written out, not thrown on, and cannot be scheduled", () => {
+  for (const at of [NaN, Infinity, 9e15]) {
+    const broken = { ...proposed, at };
+    assert.match(taskLine(broken), /No valid time/);
+    const work = { ...noWork, messages: [{ ...asking, proposal: { task: broken, scheduled: false } }] };
+    assert.equal(acceptProposal(work, "m1", broken), work);
+  }
+});
+
+test("the line a task is agreed to by carries its year", () => {
+  const noon = (year) => new Date(year, 10, 14, 12).getTime();
+  assert.notEqual(taskLine({ ...proposed, at: noon(2026) }), taskLine({ ...proposed, at: noon(2037) }));
+  assert.match(taskLine({ ...proposed, at: noon(2037) }), /2037/);
 });

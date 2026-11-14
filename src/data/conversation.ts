@@ -72,14 +72,21 @@ export function userMessage(text: string): Message {
   return { id: crypto.randomUUID(), from: "user", text, at: Date.now() };
 }
 
+/** Whether a number is a moment a date can hold. A task's time arrives from an
+    agent, and a date made from anything else throws when it is written out. */
+export function isMoment(at: number): boolean {
+  return Number.isFinite(at) && Math.abs(at) <= 8.64e15;
+}
+
 /**
  * Schedules the task a message proposed, as the user agreed to it, which may
  * differ from what was proposed. A proposal is taken up once: one that is
- * already scheduled, or a message that proposes nothing, changes nothing.
+ * already scheduled, or a message that proposes nothing, changes nothing. Nor
+ * does a task whose time is not a moment: there is nothing to schedule it for.
  */
 export function acceptProposal(work: Work, messageId: string, task: TaskDraft): Work {
   const message = work.messages.find((other) => other.id === messageId);
-  if (!message?.proposal || message.proposal.scheduled) return work;
+  if (!message?.proposal || message.proposal.scheduled || !isMoment(task.at)) return work;
   return {
     ...work,
     messages: work.messages.map((other) =>
@@ -89,8 +96,11 @@ export function acceptProposal(work: Work, messageId: string, task: TaskDraft): 
   };
 }
 
+/* With the year: this is what the user agrees to, and two dates a year apart
+   must not read alike. */
 const due = new Intl.DateTimeFormat(undefined, {
   weekday: "short",
+  year: "numeric",
   month: "short",
   day: "numeric",
   hour: "numeric",
@@ -99,7 +109,8 @@ const due = new Intl.DateTimeFormat(undefined, {
 
 /** A task's kind, when it is due and how often, on one line. */
 export function taskLine(task: TaskDraft): string {
-  const parts = [task.kind === "reminder" ? "Reminder" : "Task", due.format(task.at)];
+  const when = isMoment(task.at) ? due.format(task.at) : "No valid time";
+  const parts = [task.kind === "reminder" ? "Reminder" : "Task", when];
   if (task.repeats) parts.push(task.repeats);
   return parts.join(" · ");
 }

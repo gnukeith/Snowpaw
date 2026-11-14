@@ -3,7 +3,7 @@ import { Button } from "../components/Button";
 import { Dialog } from "../components/Dialog";
 import { Input } from "../components/Input";
 import { Segmented } from "../components/Segmented";
-import type { TaskDraft } from "../data/conversation";
+import { isMoment, type TaskDraft } from "../data/conversation";
 import styles from "./TaskEditor.module.css";
 
 interface Props {
@@ -15,8 +15,10 @@ interface Props {
 
 const kinds = ["task", "reminder"] as const;
 
-/** A moment as a date-and-time field writes it: local time, to the minute. */
+/** A moment as a date-and-time field writes it: local time, to the minute.
+    Empty for a time that is not a moment, which leaves the field to be filled. */
 function toField(at: number): string {
+  if (!isMoment(at)) return "";
   const local = new Date(at - new Date(at).getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 16);
 }
@@ -27,9 +29,12 @@ export function TaskEditor({ task, onSchedule, onClose }: Props) {
   // Kept as the field holds it, because half-typed text is not a moment yet.
   const [when, setWhen] = useState(() => toField(task.at));
 
-  const at = new Date(when).getTime();
+  // The field holds local time to the minute, which cannot say everything a
+  // moment can: seconds, or which of the two 1:30s on the night the clocks go
+  // back. So the proposed moment is kept exactly unless the field was changed.
+  const at = when === toField(task.at) ? task.at : new Date(when).getTime();
   const title = draft.title.trim();
-  const ready = title !== "" && Number.isFinite(at);
+  const ready = title !== "" && isMoment(at);
 
   function schedule(event: FormEvent) {
     event.preventDefault();

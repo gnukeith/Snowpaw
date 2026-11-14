@@ -10,7 +10,7 @@ import { Avatar } from "../components/Avatar";
 import { IconButton } from "../components/IconButton";
 import { initials, maxPinned, type Agent } from "../data/agents";
 import { Button } from "../components/Button";
-import { taskLine, type Message } from "../data/conversation";
+import { isMoment, taskLine, type Message } from "../data/conversation";
 import styles from "./Conversation.module.css";
 
 interface Props {
@@ -163,7 +163,11 @@ export function Conversation(props: Props) {
                   <p className={styles.status}>{taskLine(message.proposal.task)}</p>
                   {!message.proposal.scheduled && (
                     <div className={styles.choices}>
-                      <Button primary onClick={() => props.onSchedule(message)}>
+                      <Button
+                        primary
+                        disabled={!isMoment(message.proposal.task.at)}
+                        onClick={() => props.onSchedule(message)}
+                      >
                         Schedule it
                       </Button>
                       <Button onClick={() => props.onEditProposal(message)}>Edit first</Button>
