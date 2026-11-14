@@ -42,8 +42,15 @@ export interface Work {
 
 export const noWork: Work = { messages: [], steps: [], diff: "", tasks: [] };
 
-/** Each agent's work, by the agent's id. */
+/** Each agent's work, by the agent's id. Read it through `workOf`. */
 export type AllWork = Record<string, Work>;
+
+/** One agent's work. An id is text from storage, so it could be the name of
+    something every object inherits, such as "constructor": only an entry that
+    was really put there counts. */
+export function workOf(all: AllWork, id: string): Work {
+  return Object.hasOwn(all, id) ? all[id] : noWork;
+}
 
 export function userMessage(text: string): Message {
   return { id: crypto.randomUUID(), from: "user", text, at: Date.now() };

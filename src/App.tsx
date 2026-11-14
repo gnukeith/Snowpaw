@@ -5,7 +5,7 @@ import { Button } from "./components/Button";
 import { Empty } from "./components/Empty";
 import { Sidebar } from "./components/Sidebar";
 import { canPin, cleanName, loadAgents, saveAgents, type Agent } from "./data/agents";
-import { noWork, userMessage, type AllWork } from "./data/conversation";
+import { userMessage, workOf, type AllWork } from "./data/conversation";
 import { loadName, saveName } from "./data/profile";
 import { applyTheme, loadTheme, saveTheme } from "./theme/theme";
 import { AgentEditor } from "./views/AgentEditor";
@@ -96,15 +96,18 @@ export function App() {
         <div className={styles.panel}>
           {selected ? (
             <Conversation
+              // A new conversation for each agent, so a message half written
+              // to one is never sent to another.
+              key={selected.id}
               agent={selected}
               agents={agents}
-              messages={(work[selected.id] ?? noWork).messages}
+              messages={workOf(work, selected.id).messages}
               canPin={selected.pinned || canPin(agents)}
               panelOpen={panelOpen}
               onTogglePanel={() => setPanelOpen(!panelOpen)}
               onSend={(text) =>
                 setWork((all) => {
-                  const mine = all[selected.id] ?? noWork;
+                  const mine = workOf(all, selected.id);
                   return { ...all, [selected.id]: { ...mine, messages: [...mine.messages, userMessage(text)] } };
                 })
               }
@@ -123,7 +126,7 @@ export function App() {
       {selected && panelOpen && (
         <AgentPanel
           agent={selected}
-          work={work[selected.id] ?? noWork}
+          work={workOf(work, selected.id)}
           onClose={() => setPanelOpen(false)}
         />
       )}

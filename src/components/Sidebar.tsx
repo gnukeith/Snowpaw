@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { initials, type Agent } from "../data/agents";
-import type { AllWork } from "../data/conversation";
+import { workOf, type AllWork } from "../data/conversation";
 import { Avatar } from "./Avatar";
 import { IconButton } from "./IconButton";
 import { Input } from "./Input";
@@ -79,7 +79,7 @@ export function Sidebar(props: Props) {
             <span className={styles.rowText}>
               <span className={styles.rowName}>{agent.name}</span>
               <span className={styles.preview}>
-                {work[agent.id]?.messages.at(-1)?.text ?? "No messages yet"}
+                {workOf(work, agent.id).messages.at(-1)?.text ?? "No messages yet"}
               </span>
             </span>
           </button>
